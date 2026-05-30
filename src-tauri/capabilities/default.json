@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Baseline capability for the main window. Exposes ONLY the explicit IPC commands trenlens-core defines plus the minimal core permissions. No filesystem, no arbitrary shell — every privileged action goes through a named command that the Rust side authorizes.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:event:default",
+    {
+      "identifier": "core:webview:allow-create-webview-window",
+      "allow": []
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "binaries/litellm-proxy", "sidecar": true, "args": true }]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "binaries/litellm-proxy", "sidecar": true, "args": true }]
+    }
+  ]
+}

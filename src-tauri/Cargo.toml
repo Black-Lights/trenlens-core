@@ -1,0 +1,95 @@
+[package]
+name = "trenlens-core"
+version = "0.1.0"
+description = "MCP-orchestrating desktop AI assistant"
+authors = ["TrenLens"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# The Tauri mobile/desktop entry point lives in the lib so it can be shared.
+name = "trenlens_core_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+
+# --- MCP engine (multi-transport routing) ---
+# client+stdio: outbound local tools. client+streamable-http+sse: outbound remote
+# servers/web apps. server+hyper-server: the inbound axum MCP host (§3.1) that
+# re-exposes the aggregated registry to cooperating web apps. default-features =
+# false keeps `auth`/`ssl` out; the SDK pulls axum/hyper/tower internally.
+rust-mcp-sdk = { version = "0.9", default-features = false, features = [
+    "client",
+    "server",
+    "stdio",
+    "sse",
+    "streamable-http",
+    "hyper-server",
+    "macros",
+] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+
+# --- Local memory (SQLite via rusqlite, bundled) ---
+# `bundled` compiles SQLite from source via the `cc` crate. The C toolchain is
+# confirmed working here (ring compiled in the SSE-host build), so no fallback is
+# needed. Deviation from §4's libsql plan: row-level secrets are still sealed by
+# crypto/ (§5); at-rest DB-file encryption can be added later via the
+# `bundled-sqlcipher` feature. See §11.
+# Pinned to 0.32 (not the latest 0.40): rusqlite 0.40 pulls libsqlite3-sys 0.38,
+# whose build script uses the unstable `cfg_select` feature and fails to compile
+# on stable rustc 1.94.1. 0.32's bundled SQLite (>=3.45) still has `unixepoch()`.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# --- BYOK secret sealing (§5) ---
+# AES-256-GCM seals each provider key at the row level (authenticated encryption,
+# random 96-bit nonce). The 32-byte master key lives in the native OS vault (see
+# the platform `keyring` deps below), so it never touches our DB file or disk.
+# argon2 stays available for the OPTIONAL passphrase-derived-key path
+# (`crypto::derive_master_key`); the default flow uses the random keychain key.
+aes-gcm = "0.10"
+argon2 = "0.5"
+base64 = "0.22"
+
+# --- Image pipeline HTTP (§7) ---
+# Stage 1 hits the local Ollama daemon (qwen3-vl) for prompt expansion; Stage 2
+# routes to local ComfyUI/FLUX (plain http loopback) or the Ideogram API (https).
+# `rustls-tls` keeps us off OpenSSL/native-tls on Windows — rustls uses `ring`,
+# whose C build is already proven here (the SSE host links it). `default-features
+# = false` drops the default native-tls stack. Every call is wrapped so a refused
+# connection degrades to a mock/placeholder instead of erroring (§7 dev rule).
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+# --- serde / misc ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+# --- OS keychain (master key vault, §5) ---
+# `keyring` 3.x maps 1:1 onto each platform's native secure vault. Declared
+# per-target so each OS pulls only its own backend: Windows uses the pure-Rust
+# `windows-native` (windows-sys → Credential Manager, NO C toolchain); macOS uses
+# the Security framework; Linux uses the Secret Service (with the rust crypto
+# backend). Chosen over tauri-plugin-stronghold because Stronghold is a
+# file-based snapshot vault — NOT the OS keychain the architecture calls for.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[features]
+# Default Tauri production config.
+custom-protocol = ["tauri/custom-protocol"]

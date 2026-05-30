@@ -1,0 +1,14 @@
+TrenLens Core
+Copyright 2026 Mohammad Ammar Mughees
+
+This product is licensed under the Apache License, Version 2.0 (the "License");
+you may not use this product except in compliance with the License. A copy of
+the License is provided in the LICENSE file and at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product bundles and/or builds upon third-party open-source software, each
+under its own license, including (non-exhaustively): Tauri, the Model Context
+Protocol Rust/TypeScript SDKs, Next.js, React, Drizzle ORM, Framer Motion,
+react-markdown, rusqlite/SQLite, reqwest, RustCrypto (aes-gcm, argon2), and the
+keyring crate. See each dependency's repository for its respective license.

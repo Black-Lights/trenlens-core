@@ -1,0 +1,26 @@
+# dependencies
+/node_modules
+.pnp
+.pnp.js
+
+# next.js
+/.next/
+/dist/
+/out/
+
+# tauri / rust
+/src-tauri/target
+/src-tauri/gen
+
+# local databases & secrets (encrypted libsql lives in app data, never the repo)
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+
+# misc
+.DS_Store
+*.log
+next-env.d.ts
+*.tsbuildinfo

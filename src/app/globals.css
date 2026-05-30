@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ════════════════════════════════════════════════════════════════════════
+   DUAL-THEME TOKENS
+   Channels are space-separated RGB triplets so Tailwind's
+   `rgb(var(--c-x) / <alpha-value>)` opacity syntax works. NEVER hard-code
+   colors in components — consume the `canvas/surface/ink/pulse/...` utilities.
+   ──────────────────────────────────────────────────────────────────────── */
+
+:root,
+.light {
+  /* LIGHT — alabaster / porcelain surfaces, deep-charcoal ink */
+  --c-canvas: 244 243 240;
+  --c-surface: 250 249 247;
+  --c-surface-raised: 255 255 255;
+  --c-hairline: 224 221 214;
+
+  --c-ink: 26 28 34; /* deep charcoal typography */
+  --c-ink-muted: 92 98 110;
+  --c-ink-faint: 152 156 166;
+
+  --c-pulse: 84 102 224; /* radiant indigo, dialed for light bg */
+  --c-pulse-soft: 120 138 240;
+
+  /* Ambient field is subtle & translucent in light mode */
+  --ambient-opacity: 0.10;
+  --grain-opacity: 0.025;
+  --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+}
+
+.dark {
+  /* DARK — obsidian / charcoal surfaces, porcelain ink */
+  --c-canvas: 9 10 13;
+  --c-surface: 16 18 23;
+  --c-surface-raised: 23 26 33;
+  --c-hairline: 40 44 54;
+
+  --c-ink: 231 234 241; /* porcelain typography */
+  --c-ink-muted: 158 165 180;
+  --c-ink-faint: 92 99 114;
+
+  --c-pulse: 128 146 255; /* radiant azure-violet */
+  --c-pulse-soft: 96 120 236;
+
+  /* Ambient field glows more assertively against obsidian */
+  --ambient-opacity: 0.22;
+  --grain-opacity: 0.04;
+
+  color-scheme: dark;
+}
+
+* {
+  border-color: rgb(var(--c-hairline));
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--c-canvas));
+  color: rgb(var(--c-ink));
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Tauri transparent window: let the OS show through rounded corners. */
+  overflow: hidden;
+}
+
+/* Smooth, non-jarring theme handoff for properties Framer doesn't drive. */
+body,
+body * {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 420ms;
+  transition-timing-function: var(--ease-fluid);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   TYPOGRAPHIC UNBLUR
+   Streaming text/images mount blurred + slightly dim, then sharpen into focus.
+   Driven by the `data-unblur` attribute toggled in React.
+   ──────────────────────────────────────────────────────────────────────── */
+[data-unblur='in'] {
+  filter: blur(10px);
+  opacity: 0;
+  transform: translateY(2px);
+}
+[data-unblur='out'] {
+  filter: blur(0);
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    filter 620ms var(--ease-fluid),
+    opacity 520ms var(--ease-fluid),
+    transform 620ms var(--ease-fluid);
+}
+
+/* Per-character unblur used by <UnblurText> for live token streams. */
+.unblur-char {
+  display: inline-block;
+  white-space: pre;
+  filter: blur(8px);
+  opacity: 0;
+  animation: char-sharpen 480ms var(--ease-fluid) forwards;
+}
+@keyframes char-sharpen {
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MARKDOWN  (final assistant answers — see <Markdown>)
+   Token-driven so it tracks both themes. Kept compact to sit naturally on the
+   timeline spine (no card chrome — differentiation is by type weight).
+   ──────────────────────────────────────────────────────────────────────── */
+.tren-md {
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgb(var(--c-ink));
+  word-break: break-word;
+}
+.tren-md > :first-child {
+  margin-top: 0;
+}
+.tren-md > :last-child {
+  margin-bottom: 0;
+}
+.tren-md p {
+  margin: 0.5em 0;
+}
+.tren-md h1,
+.tren-md h2,
+.tren-md h3,
+.tren-md h4 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.25;
+  color: rgb(var(--c-ink));
+}
+.tren-md h1 {
+  font-size: 1.4em;
+}
+.tren-md h2 {
+  font-size: 1.22em;
+}
+.tren-md h3 {
+  font-size: 1.08em;
+}
+.tren-md ul,
+.tren-md ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.tren-md ul {
+  list-style: disc;
+}
+.tren-md ol {
+  list-style: decimal;
+}
+.tren-md li {
+  margin: 0.2em 0;
+}
+.tren-md li::marker {
+  color: rgb(var(--c-ink-faint));
+}
+.tren-md a {
+  color: rgb(var(--c-pulse));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tren-md strong {
+  font-weight: 650;
+  color: rgb(var(--c-ink));
+}
+.tren-md em {
+  font-style: italic;
+}
+.tren-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: rgb(var(--c-surface-raised));
+  border: 1px solid rgb(var(--c-hairline));
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.tren-md pre {
+  margin: 0.6em 0;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  background: rgb(var(--c-surface-raised));
+  border: 1px solid rgb(var(--c-hairline));
+  border-radius: 10px;
+}
+.tren-md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+.tren-md blockquote {
+  margin: 0.6em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid rgb(var(--c-hairline));
+  color: rgb(var(--c-ink-muted));
+}
+.tren-md hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid rgb(var(--c-hairline));
+}
+.tren-md table {
+  width: 100%;
+  margin: 0.6em 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.tren-md th,
+.tren-md td {
+  border: 1px solid rgb(var(--c-hairline));
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+.tren-md th {
+  background: rgb(var(--c-surface-raised));
+  font-weight: 600;
+}
+
+/* Honor users who ask for reduced motion: skip blur/transform, keep fades. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+  }
+  .unblur-char,
+  [data-unblur] {
+    filter: none !important;
+  }
+}

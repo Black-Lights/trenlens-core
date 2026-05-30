@@ -1,0 +1,48 @@
+{
+  "name": "trenlens-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform standalone desktop AI assistant that orchestrates any tool, web app, or CLI over the Model Context Protocol (MCP). Tauri v2 (Rust) + Next.js.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@ai-sdk/mcp": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^5.0.0",
+    "drizzle-orm": "^0.45.0",
+    "framer-motion": "^12.0.0",
+    "next": "^15.5.18",
+    "next-themes": "^0.4.6",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/cli": "^2.11.0",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.31.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "webapp-overlay",
+  "description": "STRICTLY scoped capability granted to embedded/remote web-app webviews that render the hover-button overlay. Such webviews are UNTRUSTED: they may ONLY invoke the two allow-listed overlay commands and may NOT touch the database, BYOK secrets, MCP management, or any window besides the overlay. Apply this capability per-label via remote.urls so only approved origins receive it.",
+  "windows": ["overlay"],
+  "remote": {
+    "urls": ["https://*.trenlens.com", "tauri://localhost"]
+  },
+  "permissions": [
+    {
+      "identifier": "core:event:allow-emit",
+      "allow": [{ "event": "overlay:summon" }, { "event": "overlay:dismiss" }]
+    }
+  ]
+}
