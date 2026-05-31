@@ -64,6 +64,12 @@ must use the npx.cmd shim, e.g. Command `npx.cmd`, Arguments `-y @modelcontextpr
 - Run a connected tool directly by typing `server::tool {\"json\":\"args\"}`, or just ask in plain \
 English and you'll call the tools yourself.\n\
 - `/image <prompt>` runs the built-in image pipeline.\n\
+- TrenLens renders images inline in the chat: any image a tool returns (e.g. a browser screenshot) \
+and any image you generate are shown to the user automatically. Never tell the user you \"can't \
+display\" an image or to open a file on disk. IMPORTANT: when the user wants to SEE a screenshot, \
+call the screenshot tool WITHOUT a filename/path argument — that makes the tool return the image \
+inline (which TrenLens shows). Passing a filename makes some tools only save a file to disk, so the \
+user sees nothing.\n\
 - API keys (Anthropic, DeepSeek, Kimi, ...) and the chat model are set in that same panel under \
 \"Provider key (BYOK)\"; keys are sealed locally and never leave the device. Past chats live in the \
 left History sidebar (+ New chat starts a session).";
@@ -438,6 +444,7 @@ async fn run_openai(
         // The assistant message that requested the calls MUST precede the tool
         // results; echo it back verbatim, then answer each call with a tool msg.
         messages.push(message.clone());
+        let mut turn_images: Vec<(String, String)> = Vec::new();
         for tc in &tool_calls {
             let id = tc.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
             let func = tc.get("function");
@@ -450,11 +457,14 @@ async fn run_openai(
                     tools_used.push(tool.clone());
                     match router.call_tool(server, tool, input).await {
                         Ok(result) => {
-                            // OpenAI tool messages are text-only; still surface any
-                            // tool images to the UI.
-                            for (mime, data) in collect_tool_images(&result) {
-                                images_out.push(data_uri(&mime, &data));
+                            // OpenAI `tool` messages are text-only; collect any tool
+                            // images so we can both surface them to the UI and feed
+                            // them back to the model (as a follow-up user turn below).
+                            let imgs = collect_tool_images(&result);
+                            for (mime, data) in &imgs {
+                                images_out.push(data_uri(mime, data));
                             }
+                            turn_images.extend(imgs);
                             flatten_tool_result(&result)
                         }
                         Err(e) => format!("Tool execution failed: {e}"),
@@ -463,6 +473,14 @@ async fn run_openai(
                 None => format!("Unknown tool: {fname}"),
             };
             messages.push(json!({ "role": "tool", "tool_call_id": id, "content": content }));
+        }
+
+        // OpenAI's `tool` role can't carry image parts, so re-present any
+        // tool-produced images as a follow-up user turn. This gives vision-capable
+        // OpenAI-compatible providers (Kimi, DeepSeek) the same screenshot
+        // awareness the Anthropic path gets via image blocks in tool_result.
+        if !turn_images.is_empty() {
+            messages.push(json!({ "role": "user", "content": openai_image_followup(&turn_images) }));
         }
     }
 
@@ -662,6 +680,23 @@ fn openai_user_content(prompt: &str, images: &[ImageInput]) -> Value {
         return json!(prompt);
     }
     let mut parts = vec![json!({ "type": "text", "text": prompt })];
+    for (media_type, data) in images {
+        parts.push(json!({
+            "type": "image_url",
+            "image_url": { "url": data_uri(media_type, data) },
+        }));
+    }
+    json!(parts)
+}
+
+/// Re-present tool-produced images to an OpenAI-compatible model as a user
+/// message (the `tool` role can't carry image parts). Mirrors how the Anthropic
+/// path puts image blocks inside the `tool_result`.
+fn openai_image_followup(images: &[ImageInput]) -> Value {
+    let mut parts = vec![json!({
+        "type": "text",
+        "text": "Here are the image(s) the tool(s) above produced, for you to look at:",
+    })];
     for (media_type, data) in images {
         parts.push(json!({
             "type": "image_url",
@@ -885,6 +920,16 @@ mod tests {
         let o = openai_user_content("look", &imgs);
         assert_eq!(o[1]["type"], "image_url");
         assert_eq!(o[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn openai_image_followup_wraps_images_in_a_user_turn() {
+        let imgs = vec![("image/png".to_string(), "QUJD".to_string())];
+        let v = openai_image_followup(&imgs);
+        // text lead-in + one image_url part.
+        assert_eq!(v[0]["type"], "text");
+        assert_eq!(v[1]["type"], "image_url");
+        assert_eq!(v[1]["image_url"]["url"], "data:image/png;base64,QUJD");
     }
 
     #[test]

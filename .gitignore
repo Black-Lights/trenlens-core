@@ -24,3 +24,6 @@
 *.log
 next-env.d.ts
 *.tsbuildinfo
+
+# local-only notes (never pushed)
+TODO.local.md

@@ -5,6 +5,22 @@ All notable changes to TrenLens Core are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0-alpha.3] - 2026-05-31
+
+### Fixed
+- **Tool screenshots now display.** Browser-screenshot tools (e.g. Playwright MCP)
+  only return an image inline when called *without* a filename — otherwise they
+  just save a file to disk. The assistant is now told that TrenLens renders tool
+  images inline and to capture screenshots without a filename, so "show me a
+  screenshot" actually shows one instead of pointing at a file path.
+
+### Changed
+- **Vision parity for Kimi & DeepSeek.** Images produced by tools are now fed back
+  to OpenAI-compatible models as a follow-up user turn (the OpenAI `tool` role
+  can't carry images), so vision-capable Kimi/DeepSeek models can see screenshots
+  the same way Anthropic already does. Attached-image input was already supported
+  for these providers.
+
 ## [0.1.0-alpha.2] - 2026-05-31
 
 ### Added
@@ -44,5 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **About dialog** with version, developer, license, and update controls.
 - **Apache-2.0** license; signed NSIS installer published to GitHub Releases.
 
+[0.1.0-alpha.3]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.1

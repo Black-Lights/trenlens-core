@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0-alpha.2",
-  "notes": "Image attachments (vision), live Markdown rendering, in-chat images, auto-expanding composer. See the GitHub release for details.",
-  "pub_date": "2026-05-31T03:10:00Z",
+  "version": "0.1.0-alpha.3",
+  "notes": "Tool screenshots now display inline in chat; vision parity for Kimi & DeepSeek (tool-produced images are fed back to the model). See the GitHub release for details.",
+  "pub_date": "2026-05-31T02:10:29Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSlZyNmI4MUtyR1dFbkVscXBubmdlSExReUpueU5zVmphQnllKzhBQTRjWlRtUEdwR3RjcVJaVCttbE5qanByeFBzTlFRTzhxdmJ2ZldaWTh5QTVBRzc5d3JvRHpyWUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwMTg5ODEzCWZpbGU6VHJlbkxlbnMgQ29yZV8wLjEuMC1hbHBoYS4yX3g2NC1zZXR1cC5leGUKZXVscHA3M2RiY1o2ME9EUXA2U1FvaVZBdzhqZmY4Y2U5Zm1sTU56ckNvS1AxUDgyVUt1MVFYbFdyT0Vud3ZyWWUyZzdUajNiWW5UTmxKOEZ2bFA3QUE9PQo=",
-      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.2/TrenLens-Core_0.1.0-alpha.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSlZyNmI4MUtyR2UxdGlUa3lLZjVXVDFqMldPdTJEckc5RGJ6K1FPMWpZQnVRSXM0WHFIam1FZjQxQ3lsaW1VaUY5N2tmanpEeFdzS01hNUdOWEtTMGJYV3R4L09peUFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwMTkzMzUzCWZpbGU6VHJlbkxlbnMgQ29yZV8wLjEuMC1hbHBoYS4zX3g2NC1zZXR1cC5leGUKVWRKQW5sZlh6TEd3WVZFK1o5UnArOWtnSnNnZjlXWDlWTVdZWXV5MGlsSms5a3VsdEhzTnJNSC80NVNLN01COUlGZisrYXJQN3FZcHJ6QjYvdTF0Q1E9PQo=",
+      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.3/TrenLens-Core_0.1.0-alpha.3_x64-setup.exe"
     }
   }
 }
