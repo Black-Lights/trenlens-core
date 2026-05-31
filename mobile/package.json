@@ -1,6 +1,6 @@
 {
   "name": "trenlens-remote-mobile",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.4",
   "private": true,
   "type": "module",
   "description": "TrenLens Remote Control — mobile-first PWA. Phase 1 scope: Supabase auth foundation (login + session). QR scan, E2E decryption, WebSocket transport, and chat timeline land in Phase 5 (see ../REMOTE_ARCHITECTURE_PLAN.md).",
