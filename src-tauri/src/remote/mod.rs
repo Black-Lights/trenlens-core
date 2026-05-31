@@ -23,9 +23,30 @@ use serde::Serialize;
 use tauri::AppHandle;
 use tokio::sync::{mpsc, watch};
 
+use protocol::{new_msg_id, seal, HistoryTurn, RemoteMessage};
+
 /// Tauri event emitted on every connection-state transition (no secrets in payload).
 /// The frontend panel subscribes to this for live status; `remote_status` polls it.
 pub const STATUS_EVENT: &str = "remote://status";
+
+/// Tauri event carrying a phone-initiated turn so it renders LIVE in the desktop
+/// timeline (Phase 6 two-way sync). Emitted twice per remote turn — `role:"user"`
+/// when the prompt arrives, `role:"assistant"` when the answer is ready (same `id`
+/// so the UI correlates them). Carries only chat text, never a secret.
+pub const TURN_EVENT: &str = "remote://turn";
+
+/// Payload of `TURN_EVENT`: one side of a phone-driven turn, scoped to the desktop
+/// conversation it belongs to (so the UI only appends it to the matching chat).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteTurn {
+    pub conversation_id: String,
+    pub id: String,
+    pub role: String,
+    pub text: String,
+    pub tools_used: Vec<String>,
+    pub images: Vec<String>,
+}
 
 /// The QR payload returned to the desktop UI by `remote_start_pairing`. `keyB64Url`
 /// is the only form of the key that ever leaves Rust, and only so the webview can
@@ -85,6 +106,10 @@ struct ConnHandle {
     control_tx: mpsc::Sender<ControlMsg>,
     join: tauri::async_runtime::JoinHandle<()>,
     status_rx: watch::Receiver<RemoteStatus>,
+    /// Outbound-frame sender into the socket's single writer. Held here (not just
+    /// inside the task) so the desktop side can push frames to the phone — a mirrored
+    /// `peerTurn` or a `history` backfill — without owning the socket.
+    out_tx: mpsc::Sender<String>,
 }
 
 /// Where the desktop dials the relay. Defaults to the local `wrangler dev` address
@@ -103,6 +128,16 @@ pub fn default_relay_url() -> String {
 pub struct RemoteState {
     session: Mutex<Option<PairingSession>>,
     conn: Mutex<Option<ConnHandle>>,
+    /// The desktop's active conversation, mirrored to the phone (the shared session).
+    /// Set by `remote_set_conversation` as the user switches chats; a desktop turn in
+    /// this conversation is broadcast to the phone, and `historyRequest` replies from
+    /// it. `None` until the desktop binds a conversation.
+    bound_session: Mutex<Option<String>>,
+    /// The desktop's selected provider/model, so a phone turn (which sends neither)
+    /// runs on the SAME engine the desktop user picked — not just the anthropic
+    /// default — making remote work for every supported provider (deepseek/kimi/…).
+    bound_provider: Mutex<Option<String>>,
+    bound_model: Mutex<Option<String>>,
 }
 
 impl RemoteState {
@@ -141,6 +176,11 @@ impl RemoteState {
         let (control_tx, control_rx) = mpsc::channel::<ControlMsg>(8);
         let initial = RemoteStatus::connecting(&room_id);
         let (status_tx, status_rx) = watch::channel(initial.clone());
+        // The outbound-frame channel lives HERE (not inside the task) so it survives
+        // reconnects and so `out_tx` can be handed to both the writer task and the
+        // desktop-side senders (`broadcast_turn` / `push_history`). 64 is plenty for
+        // the low frame rate; a wedged socket back-pressures and we drop on error.
+        let (out_tx, out_rx) = mpsc::channel::<String>(64);
 
         let join = tauri::async_runtime::spawn(client::run(
             app.clone(),
@@ -149,12 +189,15 @@ impl RemoteState {
             jwt,
             control_rx,
             status_tx,
+            out_tx.clone(),
+            out_rx,
         ));
 
         *self.conn.lock().expect("remote conn lock poisoned") = Some(ConnHandle {
             control_tx,
             join,
             status_rx,
+            out_tx,
         });
         Ok(initial)
     }
@@ -175,6 +218,8 @@ impl RemoteState {
     pub fn disconnect(&self) -> RemoteStatus {
         self.stop_connection();
         self.clear();
+        self.set_bound_session(None);
+        self.set_bound_model(None, None);
         RemoteStatus::offline()
     }
 
@@ -217,5 +262,82 @@ impl RemoteState {
     /// Drop the armed session (stop sharing / revoke the key).
     pub fn clear(&self) {
         *self.session.lock().expect("remote session lock poisoned") = None;
+    }
+
+    // ── Live two-way sync (Phase 6) ──────────────────────────────────────────
+
+    /// Bind (or clear) the shared conversation the phone mirrors. A desktop turn in
+    /// this session is broadcast to the phone, and `historyRequest` replies from it.
+    pub fn set_bound_session(&self, session_id: Option<String>) {
+        *self.bound_session.lock().expect("remote bound lock poisoned") = session_id;
+    }
+
+    /// The shared conversation id (the desktop's active chat), if one is bound.
+    pub fn bound_session(&self) -> Option<String> {
+        self.bound_session.lock().expect("remote bound lock poisoned").clone()
+    }
+
+    /// Record the desktop's active provider/model so a phone turn adopts them.
+    pub fn set_bound_model(&self, provider: Option<String>, model: Option<String>) {
+        *self.bound_provider.lock().expect("remote bound lock poisoned") = provider;
+        *self.bound_model.lock().expect("remote bound lock poisoned") = model;
+    }
+
+    /// The desktop's selected provider, if any (for phone turns that send none).
+    pub fn bound_provider(&self) -> Option<String> {
+        self.bound_provider.lock().expect("remote bound lock poisoned").clone()
+    }
+
+    /// The desktop's selected model, if any (used with `bound_provider`).
+    pub fn bound_model(&self) -> Option<String> {
+        self.bound_model.lock().expect("remote bound lock poisoned").clone()
+    }
+
+    /// Push the shared session's stored timeline to the phone so it backfills and
+    /// adopts the desktop's conversation id. Best-effort (no-op if not connected).
+    pub fn push_history(&self, session_id: &str, turns: Vec<(String, String)>) {
+        let messages = turns.into_iter().map(|(role, content)| HistoryTurn { role, content }).collect();
+        self.send_message(&RemoteMessage::history(new_msg_id(), session_id.to_string(), messages));
+    }
+
+    /// Mirror a DESKTOP-typed turn (prompt + answer) to the phone — but only when it
+    /// belongs to the bound shared session, so unrelated local chats don't leak to a
+    /// paired phone. No-op when nothing is connected.
+    pub fn broadcast_turn(
+        &self,
+        session_id: Option<&str>,
+        user_text: &str,
+        text: &str,
+        tools_used: &[String],
+        images: &[String],
+    ) {
+        let Some(sid) = session_id else { return };
+        if self.bound_session().as_deref() != Some(sid) {
+            return;
+        }
+        self.send_message(&RemoteMessage::peer_turn(
+            new_msg_id(),
+            user_text.to_string(),
+            text.to_string(),
+            tools_used.to_vec(),
+            images.to_vec(),
+        ));
+    }
+
+    /// Seal a message with the armed key and queue it on the live connection's
+    /// outbound channel. Fail-quiet: a no-op when nothing is armed or connected, and
+    /// it never blocks (a full/closed channel just drops the frame).
+    fn send_message(&self, msg: &RemoteMessage) {
+        let out_tx = match &*self.conn.lock().expect("remote conn lock poisoned") {
+            Some(h) => h.out_tx.clone(),
+            None => return,
+        };
+        let session = match self.session.lock().expect("remote session lock poisoned").as_ref() {
+            Some(s) => s.clone(),
+            None => return,
+        };
+        if let Ok(frame) = seal(&session, msg) {
+            let _ = out_tx.try_send(frame);
+        }
     }
 }

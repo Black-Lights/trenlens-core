@@ -56,7 +56,35 @@ export default function ChatPage() {
         room: session.room,
         key: session.key,
         handlers: {
-          onStatus: setStatus,
+          // On connect, ask the desktop to backfill the shared timeline (§Phase 6).
+          onStatus: (s) => {
+            setStatus(s);
+            if (s === 'connected') void socketRef.current?.requestHistory(sessionIdRef.current);
+          },
+          // The desktop may join after us; its presence beacon triggers a backfill.
+          onPresence: (m) => {
+            if (m.online && m.role === 'desktop') void socketRef.current?.requestHistory(sessionIdRef.current);
+          },
+          // Backfill: adopt the desktop's conversation id (so our next turn lands in
+          // the same chat) and render its stored timeline.
+          onHistory: (m) => {
+            if (m.sessionId) sessionIdRef.current = m.sessionId;
+            setMessages(
+              m.messages.map((t, i) => ({
+                id: `h${i}-${t.role}`,
+                role: t.role === 'user' ? ('user' as const) : ('assistant' as const),
+                text: t.content,
+                streaming: false,
+              })),
+            );
+          },
+          // A turn the DESKTOP user typed → show their prompt + the streamed answer.
+          onPeerTurn: (m) =>
+            setMessages((prev) => [
+              ...prev,
+              { id: `${m.id}-u`, role: 'user', text: m.userText },
+              { id: m.id, role: 'assistant', text: m.text, toolsUsed: m.toolsUsed, images: m.images, streaming: true },
+            ]),
           onChatResult: (m) =>
             setMessages((prev) =>
               prev.map((it) =>

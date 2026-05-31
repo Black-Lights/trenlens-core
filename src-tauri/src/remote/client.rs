@@ -31,9 +31,9 @@ use crate::mcp::McpRouter;
 use crate::memory::MemoryHandle;
 use crate::orchestrator::{run_turn, TurnParams};
 
-use super::protocol::{open, seal, RemoteImage, RemoteMessage};
+use super::protocol::{open, seal, HistoryTurn, RemoteImage, RemoteMessage};
 use super::session::PairingSession;
-use super::{ControlMsg, RemoteStatus, STATUS_EVENT};
+use super::{ControlMsg, RemoteState, RemoteStatus, RemoteTurn, STATUS_EVENT, TURN_EVENT};
 
 /// The version tag offered first in `Sec-WebSocket-Protocol`; the relay echoes it.
 const RELAY_SUBPROTOCOL: &str = "trenlens.relay.v1";
@@ -63,6 +63,8 @@ pub async fn run(
     mut jwt: String,
     mut control_rx: mpsc::Receiver<ControlMsg>,
     status_tx: watch::Sender<RemoteStatus>,
+    out_tx: mpsc::Sender<String>,
+    mut out_rx: mpsc::Receiver<String>,
 ) {
     let room_id = session.pairing_id.clone();
     let mut backoff = INITIAL_BACKOFF;
@@ -73,7 +75,7 @@ pub async fn run(
             Ok(ws) => {
                 backoff = INITIAL_BACKOFF; // a successful handshake resets backoff
                 publish(&app, &status_tx, RemoteStatus::connected(&room_id));
-                match serve(&app, &session, ws, &mut jwt, &mut control_rx).await {
+                match serve(&app, &session, ws, &mut jwt, &mut control_rx, &out_tx, &mut out_rx).await {
                     LoopEnd::Shutdown => {
                         publish(&app, &status_tx, RemoteStatus::offline());
                         return;
@@ -135,11 +137,13 @@ async fn serve(
     ws: WsStream,
     jwt: &mut String,
     control_rx: &mut mpsc::Receiver<ControlMsg>,
+    out_tx: &mpsc::Sender<String>,
+    out_rx: &mut mpsc::Receiver<String>,
 ) -> LoopEnd {
     let (mut write, mut read) = ws.split();
-    // Many producers (per-chat tasks, presence) → one writer. 64 is plenty for the
-    // low frame rate; back-pressure on a stuck socket is fine (we'll drop on error).
-    let (out_tx, mut out_rx) = mpsc::channel::<String>(64);
+    // Many producers (per-chat tasks, presence, desktop-side pushes) → one writer.
+    // The channel is owned by `run` so it survives reconnects (created in
+    // `RemoteState::connect`); here we just borrow both ends for this socket.
 
     // Tell the phone the desktop is live the moment we're connected.
     if let Ok(frame) = seal(session, &RemoteMessage::desktop_online()) {
@@ -149,7 +153,7 @@ async fn serve(
     loop {
         tokio::select! {
             inbound = read.next() => match inbound {
-                Some(Ok(Message::Text(txt))) => handle_frame(app, session, txt.as_str(), &out_tx),
+                Some(Ok(Message::Text(txt))) => handle_frame(app, session, txt.as_str(), out_tx),
                 Some(Ok(Message::Close(_))) => return LoopEnd::Disconnected,
                 // Binary isn't part of the contract; Ping/Pong are auto-handled by
                 // tungstenite and the relay's auto-response — nothing to do here.
@@ -208,10 +212,42 @@ fn handle_frame(app: &AppHandle, session: &PairingSession, txt: &str, out_tx: &m
                 }
             });
         }
-        // The desktop is the responder: it doesn't act on results/errors/presence it
-        // receives. `HistoryRequest` replay is a Phase-4 stretch (no-op for v1).
+        // The phone asks to backfill the shared timeline (on connect / re-sync). Reply
+        // from the desktop's OWN bound conversation so the phone adopts the same id.
+        RemoteMessage::HistoryRequest { id, .. } => {
+            let app = app.clone();
+            let session = session.clone();
+            let out_tx = out_tx.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(reply) = build_history(&app, id) {
+                    if let Ok(frame) = seal(&session, &reply) {
+                        let _ = out_tx.send(frame).await;
+                    }
+                }
+            });
+        }
+        // The desktop is the responder: it doesn't act on the results/errors/presence/
+        // history/peerTurn frames it would only ever SEND, never receive.
         _ => {}
     }
+}
+
+/// Build a `history` reply from the desktop's bound (shared) conversation, reading
+/// its stored timeline so the phone backfills AND adopts the same `sessionId`.
+/// `None` when no conversation is bound yet (the phone simply stays empty until the
+/// desktop binds one, which then pushes history proactively).
+fn build_history(app: &AppHandle, request_id: String) -> Option<RemoteMessage> {
+    let remote = app.state::<RemoteState>();
+    let session_id = remote.bound_session()?;
+    let db = app.state::<MemoryHandle>();
+    let messages = db
+        .list_messages(&session_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, role, _)| role == "user" || role == "assistant")
+        .map(|(_, role, content)| HistoryTurn { role, content })
+        .collect();
+    Some(RemoteMessage::history(request_id, session_id, messages))
 }
 
 /// Run a decrypted `chat` through the shared turn core and shape the reply. Reaches
@@ -229,6 +265,22 @@ async fn run_chat_turn(
     let router = app.state::<Arc<McpRouter>>();
     let db = app.state::<MemoryHandle>();
     let crypto = app.state::<CryptoState>();
+    let remote = app.state::<RemoteState>();
+
+    // Mirror the phone's prompt into the desktop timeline immediately (before the
+    // potentially-long agentic loop), so the desktop shows it as "thinking".
+    let conversation_id = session_id.clone();
+    if let Some(cid) = &conversation_id {
+        emit_turn(app, cid, &id, "user", &text, &[], &[]);
+    }
+
+    // The phone sends no provider/model, so adopt the desktop's selection — the turn
+    // runs on the engine the desktop user picked (anthropic/deepseek/kimi), not just
+    // the default. If the phone DID name a provider, respect it (and its own model).
+    let (provider, model) = match provider {
+        Some(p) => (Some(p), model),
+        None => (remote.bound_provider(), remote.bound_model()),
+    };
 
     let params = TurnParams {
         user_prompt: text,
@@ -239,9 +291,31 @@ async fn run_chat_turn(
     };
 
     match run_turn(router.inner(), db.inner(), crypto.inner(), params).await {
-        Ok(r) => RemoteMessage::chat_result(id, r.text, r.tools_used, r.images),
+        Ok(r) => {
+            // Push the answer to the desktop UI too, then seal it back to the phone.
+            if let Some(cid) = &conversation_id {
+                emit_turn(app, cid, &id, "assistant", &r.text, &r.tools_used, &r.images);
+            }
+            RemoteMessage::chat_result(id, r.text, r.tools_used, r.images)
+        }
         Err(e) => RemoteMessage::error(id, classify_turn_error(&e), e),
     }
+}
+
+/// Emit a `remote://turn` event so a phone-driven turn renders LIVE in the desktop
+/// timeline. Scoped to its conversation id; the UI only appends it to that chat.
+fn emit_turn(app: &AppHandle, conversation_id: &str, id: &str, role: &str, text: &str, tools_used: &[String], images: &[String]) {
+    let _ = app.emit(
+        TURN_EVENT,
+        RemoteTurn {
+            conversation_id: conversation_id.to_string(),
+            id: id.to_string(),
+            role: role.to_string(),
+            text: text.to_string(),
+            tools_used: tools_used.to_vec(),
+            images: images.to_vec(),
+        },
+    );
 }
 
 /// Map a `run_turn` error string to a stable wire `code` the phone can branch on.

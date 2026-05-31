@@ -9,7 +9,11 @@
 //!
 //! Direction is a convention, not enforced here:
 //!   phone → desktop: `chat`, `historyRequest`
-//!   desktop → phone: `chatResult`, `error`, `history`, `presence`
+//!   desktop → phone: `chatResult`, `error`, `history`, `presence`, `peerTurn`
+//!
+//! Live two-way sync (Phase 6): `history` carries the desktop's active `sessionId`
+//! so the phone adopts the same conversation; `peerTurn` mirrors a turn the DESKTOP
+//! user typed (their prompt + the answer) onto the phone, so both timelines match.
 
 #![allow(dead_code)]
 
@@ -70,7 +74,9 @@ pub enum RemoteMessage {
     Error { id: String, code: String, message: String },
     /// either direction: liveness / who's-online signal.
     Presence { id: String, role: String, online: bool },
-    /// phone → desktop (optional): replay a session's stored timeline.
+    /// phone → desktop: replay the shared session's stored timeline (the desktop
+    /// answers from its OWN bound conversation, so the phone's `sessionId` here is
+    /// only a hint — the reply carries the authoritative id to adopt).
     #[serde(rename_all = "camelCase")]
     HistoryRequest {
         id: String,
@@ -78,8 +84,20 @@ pub enum RemoteMessage {
         #[serde(default)]
         limit: Option<u32>,
     },
-    /// desktop → phone (optional): the stored timeline.
-    History { id: String, messages: Vec<HistoryTurn> },
+    /// desktop → phone: the stored timeline PLUS the active `sessionId` the phone
+    /// should adopt, so its next `chat` lands in the same conversation.
+    #[serde(rename_all = "camelCase")]
+    History { id: String, session_id: String, messages: Vec<HistoryTurn> },
+    /// desktop → phone: a turn the DESKTOP user typed locally, mirrored so the phone
+    /// shows it too (their prompt as a user bubble + the assistant's answer).
+    #[serde(rename_all = "camelCase")]
+    PeerTurn {
+        id: String,
+        user_text: String,
+        text: String,
+        tools_used: Vec<String>,
+        images: Vec<String>,
+    },
 }
 
 impl RemoteMessage {
@@ -96,6 +114,22 @@ impl RemoteMessage {
     /// A desktop presence beacon (fresh id — not tied to any request).
     pub fn desktop_online() -> Self {
         RemoteMessage::Presence { id: new_msg_id(), role: "desktop".into(), online: true }
+    }
+
+    /// A `history` reply: the shared session's timeline + the id the phone adopts.
+    pub fn history(id: impl Into<String>, session_id: impl Into<String>, messages: Vec<HistoryTurn>) -> Self {
+        RemoteMessage::History { id: id.into(), session_id: session_id.into(), messages }
+    }
+
+    /// A `peerTurn`: a desktop-typed turn (prompt + answer) mirrored to the phone.
+    pub fn peer_turn(
+        id: impl Into<String>,
+        user_text: String,
+        text: String,
+        tools_used: Vec<String>,
+        images: Vec<String>,
+    ) -> Self {
+        RemoteMessage::PeerTurn { id: id.into(), user_text, text, tools_used, images }
     }
 }
 
@@ -177,6 +211,26 @@ mod tests {
         assert_eq!(p["type"], "presence");
         assert_eq!((p["role"].as_str(), p["online"].as_bool()), (Some("desktop"), Some(true)));
         assert!(p["id"].as_str().is_some_and(|s| !s.is_empty()));
+    }
+
+    #[test]
+    fn history_and_peer_turn_carry_camelcase_payloads() {
+        let h = RemoteMessage::history(
+            "r1",
+            "rmt_abc",
+            vec![HistoryTurn { role: "user".into(), content: "hi".into() }],
+        );
+        let v: serde_json::Value = serde_json::to_value(&h).unwrap();
+        assert_eq!(v["type"], "history");
+        assert_eq!(v["sessionId"], "rmt_abc");
+        assert_eq!(v["messages"][0]["role"], "user");
+
+        let pt = RemoteMessage::peer_turn("p1", "draft a note".into(), "Here you go.".into(), vec!["fs__write".into()], vec![]);
+        let v: serde_json::Value = serde_json::to_value(&pt).unwrap();
+        assert_eq!(v["type"], "peerTurn");
+        assert_eq!(v["userText"], "draft a note");
+        assert_eq!(v["text"], "Here you go.");
+        assert_eq!(v["toolsUsed"][0], "fs__write");
     }
 
     #[test]

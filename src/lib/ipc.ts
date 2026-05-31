@@ -160,6 +160,21 @@ export interface RemoteStatus {
   roomId: string | null;
 }
 
+/**
+ * One side of a phone-driven turn, pushed via the `remote://turn` event so a remote
+ * conversation renders LIVE in the desktop timeline (Phase 6). Emitted twice per turn
+ * — `role:"user"` when the prompt arrives, `role:"assistant"` when the answer is ready
+ * (same `id`). `conversationId` scopes it to the chat the phone is mirroring.
+ */
+export interface RemoteTurn {
+  conversationId: string;
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  toolsUsed: string[];
+  images: string[];
+}
+
 export const ipc = {
   // memory / conversation history
   listConversations: () => call<Conversation[]>('list_conversations'),
@@ -234,6 +249,15 @@ export const ipc = {
   remoteDisconnect: () => call<RemoteStatus>('remote_disconnect'),
   /** Poll the current connection/pairing state. */
   remoteStatus: () => call<RemoteStatus>('remote_status'),
+  /** Bind the active conversation as the shared session the phone mirrors (§Phase 6):
+   *  pushes its timeline to the phone so it backfills + adopts the id. `null` clears.
+   *  `provider`/`model` record the desktop's engine so phone turns run on it too. */
+  remoteSetConversation: (sessionId: string | null, provider?: string | null, model?: string | null) =>
+    call<void>('remote_set_conversation', {
+      sessionId,
+      provider: provider ?? null,
+      model: model ?? null,
+    }),
 
   /**
    * Open a URL in the user's default browser via the Tauri opener plugin

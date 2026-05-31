@@ -7,6 +7,7 @@ import { apiKeys, settings } from '@/db/schema';
 import { db } from './db';
 import { ipc, isTauri, type Conversation, type ImageAttachment, type McpServerDto, type McpTool, type ProxyStatus, type StoredMessage, type ToolInputSchema } from './ipc';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, modelsFor } from './models';
+import { setConversation as remoteSetConversation, subscribeRemoteTurn, subscribeStatus } from './remote';
 
 /** Result of the on-mount Drizzle → Tauri → SQLite pipeline probe. */
 export interface DbStatus {
@@ -758,6 +759,51 @@ export function useMcp() {
       alive = false;
     };
   }, [refresh, loadKeyStatus]);
+
+  // ── Remote Control: live two-way timeline sync (§Phase 6) ───────────────────
+  //
+  // The active desktop conversation IS the shared session a paired phone mirrors.
+  // Keep the backend bound to it (+ the selected engine) so a phone turn lands in the
+  // same chat and runs on the same provider; switching chats here re-syncs the phone.
+  // Safe when no phone is connected — the backend just records the binding.
+  useEffect(() => {
+    if (!isTauri()) return;
+    remoteSetConversation(currentConversationId, provider, model).catch(() => {});
+  }, [currentConversationId, provider, model]);
+
+  // On (re)connect, make sure a shared conversation exists and push the binding so the
+  // phone backfills from it; render phone-driven turns LIVE on this timeline. A remote
+  // turn arrives as two events (user on arrival, assistant on completion, same id), so
+  // it mirrors the local `chat()` shape: user bubble + a breathing assistant that then
+  // streams the answer in. Only the chat that's currently open is appended to.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const offStatus = subscribeStatus((s) => {
+      if (s.state !== 'connected') return;
+      void (async () => {
+        const cid = convIdRef.current ?? (await ensureConversation('Remote chat'));
+        await remoteSetConversation(cid, providerRef.current, modelRef.current).catch(() => {});
+      })();
+    });
+    const offTurn = subscribeRemoteTurn((t) => {
+      if (t.conversationId !== convIdRef.current) return;
+      if (t.role === 'user') {
+        append({ id: `${t.id}-u`, kind: 'user', text: t.text });
+        append({ id: t.id, kind: 'assistant', text: '', thinking: true });
+      } else {
+        patch(t.id, {
+          thinking: false,
+          toolsUsed: t.toolsUsed?.length ? t.toolsUsed : undefined,
+          images: t.images?.length ? t.images : undefined,
+        });
+        void stream(t.id, t.text || '(no response)', 'text');
+      }
+    });
+    return () => {
+      offStatus();
+      offTurn();
+    };
+  }, [append, patch, stream, ensureConversation]);
 
   return {
     servers,

@@ -333,7 +333,11 @@ pub async fn submit_chat_message(
     router: tauri::State<'_, Arc<McpRouter>>,
     db: tauri::State<'_, MemoryHandle>,
     crypto: tauri::State<'_, crate::crypto::CryptoState>,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
 ) -> Result<crate::orchestrator::ChatResult, String> {
+    // Keep copies for the Remote Control mirror (the params move below).
+    let mirror_session = session_id.clone();
+    let mirror_prompt = user_prompt.clone();
     let params = crate::orchestrator::TurnParams {
         user_prompt,
         provider,
@@ -346,7 +350,17 @@ pub async fn submit_chat_message(
             .map(|i| (i.media_type, i.data))
             .collect(),
     };
-    crate::orchestrator::run_turn(router.inner(), db.inner(), crypto.inner(), params).await
+    let result = crate::orchestrator::run_turn(router.inner(), db.inner(), crypto.inner(), params).await?;
+    // Mirror this desktop-typed turn to a paired phone (no-op when not connected or
+    // the turn isn't in the shared session), so both timelines stay in sync.
+    remote.broadcast_turn(
+        mirror_session.as_deref(),
+        &mirror_prompt,
+        &result.text,
+        &result.tools_used,
+        &result.images,
+    );
+    Ok(result)
 }
 
 // ─── Overlay (web-app hover button summon) ──────────────────────────────────
@@ -413,4 +427,43 @@ pub async fn remote_status(
     remote: tauri::State<'_, crate::remote::RemoteState>,
 ) -> Result<crate::remote::RemoteStatus, String> {
     Ok(remote.status())
+}
+
+// ─── Remote Control (live two-way timeline sync, §Phase 6) ──────────────────
+//
+// The desktop's active conversation IS the shared session the phone mirrors. The UI
+// calls this whenever that conversation changes (and on connect): it binds the id so
+// a desktop turn under it is broadcast to the phone, then pushes that conversation's
+// stored timeline so the phone backfills and adopts the same id (its next turn then
+// lands in the same conversation). `null` clears the binding. Phone-driven turns flow
+// the other way via the `remote://turn` event the Rust client emits.
+
+#[tauri::command]
+pub async fn remote_set_conversation(
+    session_id: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    db: tauri::State<'_, MemoryHandle>,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<(), String> {
+    // Always record the desktop's selected engine so phone turns adopt it. Push the
+    // timeline ONLY when the bound conversation actually changes (connect / chat
+    // switch) — a mere provider/model change must not re-sync the phone's timeline.
+    let changed = remote.bound_session().as_deref() != session_id.as_deref();
+    remote.set_bound_session(session_id.clone());
+    remote.set_bound_model(provider, model);
+    if changed {
+        if let Some(cid) = &session_id {
+            // Only user/assistant turns replay (tool/image rows are skipped, matching
+            // the orchestrator's history filter), as (role, content) pairs oldest-first.
+            let turns: Vec<(String, String)> = db
+                .list_messages(cid)?
+                .into_iter()
+                .filter(|(_, role, _)| role == "user" || role == "assistant")
+                .map(|(_, role, content)| (role, content))
+                .collect();
+            remote.push_history(cid, turns);
+        }
+    }
+    Ok(())
 }

@@ -102,6 +102,7 @@ pub fn run() {
             commands::remote_update_token,
             commands::remote_disconnect,
             commands::remote_status,
+            commands::remote_set_conversation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running trenlens-core");

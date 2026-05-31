@@ -17,8 +17,11 @@
 import { openMessage, sealMessage } from './crypto';
 import {
   buildChat,
+  buildHistoryRequest,
   type ChatResultMessage,
   type ErrorMessage,
+  type HistoryMessage,
+  type PeerTurnMessage,
   type PresenceMessage,
   type RemoteImage,
   type RemoteMessage,
@@ -31,6 +34,10 @@ export interface RemoteHandlers {
   onChatResult?: (m: ChatResultMessage) => void;
   onError?: (m: ErrorMessage) => void;
   onPresence?: (m: PresenceMessage) => void;
+  /** Backfill: the desktop's shared timeline + the `sessionId` to adopt (§Phase 6). */
+  onHistory?: (m: HistoryMessage) => void;
+  /** A turn the DESKTOP user typed, mirrored here so both timelines match (§Phase 6). */
+  onPeerTurn?: (m: PeerTurnMessage) => void;
 }
 
 const RELAY_SUBPROTOCOL = 'trenlens.relay.v1';
@@ -128,6 +135,16 @@ export class RemoteSocket {
     await this.send(buildChat(args));
   }
 
+  /** Ask the desktop to backfill the shared timeline (§Phase 6). Sent on connect and
+   *  when the desktop announces presence; best-effort (a no-op if not open yet). */
+  async requestHistory(sessionId?: string | null): Promise<void> {
+    try {
+      await this.send(buildHistoryRequest({ sessionId }));
+    } catch {
+      /* not connected yet — onPresence/onStatus will retry */
+    }
+  }
+
   /** Push a refreshed Supabase token; used on the next reconnect. */
   updateToken(jwt: string): void {
     this.jwt = jwt;
@@ -172,6 +189,12 @@ export class RemoteSocket {
         break;
       case 'presence':
         this.handlers.onPresence?.(msg as PresenceMessage);
+        break;
+      case 'history':
+        this.handlers.onHistory?.(msg as HistoryMessage);
+        break;
+      case 'peerTurn':
+        this.handlers.onPeerTurn?.(msg as PeerTurnMessage);
         break;
       default:
         break;
