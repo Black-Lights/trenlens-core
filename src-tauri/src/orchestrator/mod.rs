@@ -29,7 +29,9 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::crypto::CryptoState;
 use crate::mcp::McpRouter;
+use crate::memory::MemoryHandle;
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -121,6 +123,118 @@ pub async fn run_chat(
             run_anthropic(&client, router, api_key, pick(model, DEFAULT_ANTHROPIC_MODEL), &catalog, history, user_prompt, images).await
         }
     }
+}
+
+// ── One full turn: the shared core of a chat (IPC *and* Remote Control) ──────
+//
+// `submit_chat_message` (local composer) and the Phase 4 remote socket handler
+// both resolve the same things — active provider, the sealed BYOK key, prior
+// history — and run them through `run_chat`, then persist the round-trip. Keeping
+// that core HERE means a remote turn is byte-identical to a local one (same code
+// path, same storage), which is exactly the parity Phase 4 requires. The callers
+// differ only in how they obtain `TurnParams` (typed IPC args vs. a decrypted
+// `chat` message) and reach the managed states (`tauri::State` vs. `AppHandle`).
+
+/// How many prior (user/assistant) turns to replay as context — bounds the prompt.
+pub const HISTORY_TURNS: usize = 20;
+
+/// Everything one conversational turn needs, provider-agnostic. Built from the IPC
+/// command args or from a decrypted remote `chat` message; `images` are already in
+/// the orchestrator's `(media_type, base64)` shape.
+pub struct TurnParams {
+    pub user_prompt: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub session_id: Option<String>,
+    pub images: Vec<ImageInput>,
+}
+
+/// Run one full turn end-to-end: resolve the provider (default `anthropic`), fetch
+/// + unseal that provider's BYOK key (§5 — plaintext stays in-process), replay the
+/// last `HISTORY_TURNS` for context, run the agentic loop (concurrently naming the
+/// chat on its first turn), and persist the user/assistant pair under `session_id`.
+pub async fn run_turn(
+    router: &McpRouter,
+    db: &MemoryHandle,
+    crypto: &CryptoState,
+    params: TurnParams,
+) -> Result<ChatResult, String> {
+    let provider = params
+        .provider
+        .map(|p| p.trim().to_ascii_lowercase())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "anthropic".to_string());
+    let model = params.model.unwrap_or_default();
+    let user_prompt = params.user_prompt;
+    let images = params.images;
+    let session_id = params.session_id;
+
+    // The api_keys.provider string is the same id selected in the BYOK panel.
+    let api_key = lookup_secret(db, crypto, &provider).ok_or_else(|| {
+        format!("No {provider} key found. Add one in the BYOK panel (provider: {provider}) and try again.")
+    })?;
+
+    // Replay prior user/assistant turns for multi-turn context (tool/image rows
+    // are skipped — the model gets the conversation, not raw tool payloads).
+    let history: Vec<Turn> = match &session_id {
+        Some(sid) => {
+            let mut turns: Vec<Turn> = db
+                .list_messages(sid)?
+                .into_iter()
+                .filter(|(_, role, _)| role == "user" || role == "assistant")
+                .map(|(_, role, content)| (role, content))
+                .collect();
+            if turns.len() > HISTORY_TURNS {
+                turns = turns.split_off(turns.len() - HISTORY_TURNS);
+            }
+            turns
+        }
+        None => Vec::new(),
+    };
+
+    // On the first turn of a session, ask the model to name the chat — run
+    // CONCURRENTLY with the answer (it only needs the prompt), so it overlaps the
+    // longer chat turn and adds no perceptible latency.
+    let first_turn = history.is_empty() && session_id.is_some();
+    let chat_fut = run_chat(router, &provider, &api_key, &model, &history, &user_prompt, &images);
+    let title_fut = async {
+        if first_turn {
+            generate_title(&provider, &api_key, &model, &user_prompt).await
+        } else {
+            None
+        }
+    };
+    let (result, title) = tokio::join!(chat_fut, title_fut);
+    let result = result?;
+
+    // Persist the round-trip so the session reloads intact, and the desktop UI and
+    // phone share one timeline (best-effort — a storage hiccup must not sink an
+    // otherwise-successful answer).
+    if let Some(sid) = &session_id {
+        let _ = db.append_message(sid, "user", &user_prompt);
+        let _ = db.append_message(sid, "assistant", &result.text);
+        // LLM title wins over the first-message snippet set by append_message.
+        if let Some(title) = title {
+            let _ = db.set_conversation_title(sid, &title);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Read the latest sealed secret for `provider` from `api_keys` and unseal it
+/// in-process. Returns `None` on any miss/decrypt failure so callers degrade
+/// gracefully (e.g. the placeholder probe row never unseals to a real key). Lives
+/// here (not in `commands`) so both the IPC turn and the image pipeline share it.
+pub(crate) fn lookup_secret(db: &MemoryHandle, crypto: &CryptoState, provider: &str) -> Option<String> {
+    let rows = db
+        .query(
+            "SELECT secret_ciphertext FROM api_keys WHERE provider = ?1 ORDER BY created_at DESC LIMIT 1",
+            &[Value::String(provider.to_string())],
+        )
+        .ok()?;
+    let ciphertext = rows.first()?.first()?.as_str()?;
+    crypto.unseal(ciphertext).ok()
 }
 
 // ── LLM-generated conversation titles ───────────────────────────────────────

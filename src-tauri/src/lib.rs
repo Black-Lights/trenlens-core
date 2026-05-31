@@ -98,6 +98,10 @@ pub fn run() {
             commands::submit_chat_message,
             commands::summon_overlay,
             commands::remote_start_pairing,
+            commands::remote_connect,
+            commands::remote_update_token,
+            commands::remote_disconnect,
+            commands::remote_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running trenlens-core");

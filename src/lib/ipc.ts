@@ -149,6 +149,17 @@ export interface PairingInfo {
   uri: string;
 }
 
+/**
+ * Live connection state of the desktop Remote Control client (mirrors
+ * `remote::RemoteStatus`). `paired` is true whenever a session is armed; `roomId`
+ * is the non-secret pairing id (the key is never included).
+ */
+export interface RemoteStatus {
+  state: 'offline' | 'connecting' | 'connected' | 'reconnecting' | string;
+  paired: boolean;
+  roomId: string | null;
+}
+
 export const ipc = {
   // memory / conversation history
   listConversations: () => call<Conversation[]>('list_conversations'),
@@ -210,6 +221,19 @@ export const ipc = {
   // remote control (§Phase 3) — mint an ephemeral E2E AES key + room id; returns the
   // `trenlens://pair` QR payload the desktop renders. Calling again rotates the key.
   remoteStartPairing: () => call<PairingInfo>('remote_start_pairing'),
+
+  // remote control live connection (§Phase 4) — the headless Rust WebSocket client.
+  /** Open the relay socket for the armed pairing. `jwt` is the Supabase access
+   *  token (the relay verifies it at the upgrade); `relayUrl` overrides the local
+   *  dev default. Returns the initial status (`connecting`). */
+  remoteConnect: (jwt: string, relayUrl?: string) =>
+    call<RemoteStatus>('remote_connect', { jwt, relayUrl: relayUrl ?? null }),
+  /** Push a refreshed Supabase token; applied on the next reconnect. */
+  remoteUpdateToken: (jwt: string) => call<void>('remote_update_token', { jwt }),
+  /** Stop the client and DROP the E2E key (re-pair required to reconnect). */
+  remoteDisconnect: () => call<RemoteStatus>('remote_disconnect'),
+  /** Poll the current connection/pairing state. */
+  remoteStatus: () => call<RemoteStatus>('remote_status'),
 
   /**
    * Open a URL in the user's default browser via the Tauri opener plugin

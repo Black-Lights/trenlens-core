@@ -37,6 +37,12 @@ pub struct RemoteEnvelope {
 }
 
 /// An armed pairing: the ephemeral AES-256 key plus the room id shown in the QR.
+///
+/// `Clone` lets the Phase 4 socket task own a snapshot of the armed session (key +
+/// room id) so it can seal/open frames off the main thread; the raw key stays
+/// private either way. `remote_disconnect` drops both copies (the managed one via
+/// `clear()`, the task's when it ends), so a manual disconnect truly revokes the key.
+#[derive(Clone)]
 pub struct PairingSession {
     pub pairing_id: String,
     key: [u8; KEY_LEN],
