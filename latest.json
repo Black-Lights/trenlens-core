@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0-alpha.1",
+  "notes": "First public alpha of TrenLens Core. See the GitHub release for details.",
+  "pub_date": "2026-05-31T02:35:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSlZyNmI4MUtyR2NUOFgxeHpDK3dWbEkwRk91bjBYRkJSTU02cUF1ZU5VcmxuSEc0eVY4bTZvNVN4TzFDQzFuRVhVOXBTUHBhMGF5K0hmQ3cyZGNCZHhOVUtTY1lwSndJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwMTg3NzQ3CWZpbGU6VHJlbkxlbnMgQ29yZV8wLjEuMC1hbHBoYS4xX3g2NC1zZXR1cC5leGUKSUdLUzJnUWN4VFYzOXF4SlN0TUNMQ05rNFZjc3VlS3ZhMkxUemszRktXWGhOU0VSZTMybEtZeEpxRE5kSjJ3VGtzai9KN0gxQk0zd2Z0YjJub1hhQ1E9PQo=",
+      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.1/TrenLens-Core_0.1.0-alpha.1_x64-setup.exe"
+    }
+  }
+}
