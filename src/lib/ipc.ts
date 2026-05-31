@@ -39,11 +39,19 @@ export interface StoredMessage {
   role: string; // 'user' | 'assistant' | 'tool' | 'system'
   content: string;
 }
+/** A user-attached image: `data` is base64 (no prefix); `dataUrl` is for preview. */
+export interface ImageAttachment {
+  dataUrl: string;
+  mediaType: string;
+  data: string;
+}
+
 /** Active chat config sent with each turn (selected in the BYOK panel). */
 export interface ChatOptions {
   provider?: string;
   model?: string;
   sessionId?: string | null;
+  images?: { mediaType: string; data: string }[];
 }
 export interface McpServerDto {
   id: string;
@@ -126,6 +134,8 @@ export interface ImageResult {
 export interface ChatResult {
   text: string;
   toolsUsed: string[];
+  /** data: URIs of images produced by tools during the turn (e.g. screenshots). */
+  images: string[];
 }
 
 export const ipc = {
@@ -180,6 +190,7 @@ export const ipc = {
       provider: opts?.provider ?? null,
       model: opts?.model ?? null,
       sessionId: opts?.sessionId ?? null,
+      images: opts?.images ?? null,
     }),
 
   // overlay

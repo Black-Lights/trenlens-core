@@ -5,7 +5,7 @@ import type { NodePhase } from './MorphingNode';
  * tool executions all share one spine — there are no separate bubble lanes.
  */
 export type TimelineEntry =
-  | { id: string; kind: 'user'; text: string }
+  | { id: string; kind: 'user'; text: string; images?: string[] }
   | {
       id: string;
       kind: 'assistant';
@@ -13,10 +13,12 @@ export type TimelineEntry =
       streaming?: boolean;
       // Conversational layer: `thinking` drives a breathing MorphingNode while the
       // turn is in flight; `toolsUsed` notes any MCP tools the model invoked;
-      // `error` styles a failed turn (no key / API error).
+      // `error` styles a failed turn (no key / API error); `images` are data: URIs
+      // produced by tools during the turn (e.g. screenshots).
       thinking?: boolean;
       toolsUsed?: string[];
       error?: boolean;
+      images?: string[];
     }
   | {
       id: string;
@@ -26,6 +28,7 @@ export type TimelineEntry =
       phase: NodePhase;
       output?: string; // the tool result payload — unblurs/streams in
       streaming?: boolean; // true while the payload is still arriving
+      images?: string[]; // data: URIs returned by the tool (e.g. screenshots)
     }
   | {
       // A two-stage image generation (§7). The Morphing Node breathes through both

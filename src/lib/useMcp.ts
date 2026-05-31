@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimelineEntry } from '@/components/timeline/types';
 import { apiKeys, settings } from '@/db/schema';
 import { db } from './db';
-import { ipc, isTauri, type Conversation, type McpServerDto, type McpTool, type ProxyStatus, type StoredMessage, type ToolInputSchema } from './ipc';
+import { ipc, isTauri, type Conversation, type ImageAttachment, type McpServerDto, type McpTool, type ProxyStatus, type StoredMessage, type ToolInputSchema } from './ipc';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, modelsFor } from './models';
 
 /** Result of the on-mount Drizzle → Tauri → SQLite pipeline probe. */
@@ -66,6 +66,20 @@ function renderToolContent(content: unknown): string {
       .join('\n');
   }
   return typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+}
+
+/** Extract data: URIs from any image blocks in an MCP tool result's content. */
+function extractToolImages(content: unknown): string[] {
+  const c = content as { content?: unknown } | null;
+  if (!c || !Array.isArray(c.content)) return [];
+  const out: string[] = [];
+  for (const b of c.content as Array<Record<string, unknown>>) {
+    if (b.type === 'image' && typeof b.data === 'string') {
+      const mime = typeof b.mimeType === 'string' ? b.mimeType : 'image/png';
+      out.push(`data:${mime};base64,${b.data}`);
+    }
+  }
+  return out;
 }
 
 /** Parse the `list_mcp_tools` envelope (`{ tools, errors }`) into McpTool[]. */
@@ -160,6 +174,7 @@ function dbMessageToEntry(m: StoredMessage): TimelineEntry | null {
           server: o.server as string | undefined,
           phase: 'done',
           output: String(o.output ?? ''),
+          images: Array.isArray(o.images) ? (o.images as string[]) : undefined,
         };
       }
     } catch {
@@ -387,11 +402,15 @@ export function useMcp() {
       try {
         const res = await ipc.callMcpTool(server, tool, args ?? {});
         const text = renderToolContent(res.content);
+        const imgs = extractToolImages(res.content);
         if (res.ok) {
-          patch(id, { phase: 'dissolving' });
+          patch(id, { phase: 'dissolving', images: imgs.length ? imgs : undefined });
           await stream(id, text || '(tool returned no content)', 'output');
           patch(id, { phase: 'done' });
-          await persist('tool', JSON.stringify({ tool, server, output: text || '(tool returned no content)' }));
+          await persist(
+            'tool',
+            JSON.stringify({ tool, server, output: text || '(tool returned no content)', images: imgs.length ? imgs : undefined }),
+          );
         } else {
           patch(id, { phase: 'error', output: text || 'The tool reported an error.', streaming: false });
         }
@@ -461,7 +480,7 @@ export function useMcp() {
   // via Typographic Unblur. The anthropic key is unsealed backend-side — plaintext
   // never reaches the webview. Tools the model invoked are noted under the answer.
   const chat = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, attachments?: ImageAttachment[]) => {
       if (running.current) return;
       running.current = true;
       setBusy(true);
@@ -472,8 +491,13 @@ export function useMcp() {
           provider: providerRef.current,
           model: modelRef.current,
           sessionId: convIdRef.current,
+          images: attachments?.map((a) => ({ mediaType: a.mediaType, data: a.data })),
         });
-        patch(id, { thinking: false, toolsUsed: res.toolsUsed?.length ? res.toolsUsed : undefined });
+        patch(id, {
+          thinking: false,
+          toolsUsed: res.toolsUsed?.length ? res.toolsUsed : undefined,
+          images: res.images?.length ? res.images : undefined,
+        });
         await stream(id, res.text || '(no response)', 'text');
         // The backend persists the user + assistant turns under sessionId.
       } catch (e) {
@@ -499,10 +523,11 @@ export function useMcp() {
 
   // Parse a composer line and route it to a real tool call (or an explainer).
   const dispatch = useCallback(
-    async (raw: string) => {
+    async (raw: string, attachments?: ImageAttachment[]) => {
       const text = raw.trim();
-      if (!text || running.current) return;
-      append({ id: uid(), kind: 'user', text });
+      const hasImages = !!attachments && attachments.length > 0;
+      if ((!text && !hasImages) || running.current) return;
+      append({ id: uid(), kind: 'user', text, images: hasImages ? attachments.map((a) => a.dataUrl) : undefined });
 
       if (ready === false) {
         await assistantSay(
@@ -513,7 +538,7 @@ export function useMcp() {
 
       // Make sure a session exists, then route. Afterwards the conversation list
       // is refreshed so titles (incl. the LLM auto-name) and ordering update.
-      await ensureConversation(text);
+      await ensureConversation(text || 'Image');
       try {
         // `/image <prompt>` (or `/imagine`) triggers the two-stage image pipeline.
         // An optional route hint forces Stage 2: `/image:flux …` or `/image:ideogram …`.
@@ -552,8 +577,9 @@ export function useMcp() {
         }
 
         // Plain English → the active provider/model, MCP tools injected (agentic
-        // loop). The backend persists both turns + auto-names the session.
-        await chat(text);
+        // loop). Attached images ride along for vision. The backend persists both
+        // turns + auto-names the session.
+        await chat(text, attachments);
       } finally {
         void refreshConversations();
       }

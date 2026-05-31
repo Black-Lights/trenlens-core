@@ -15,7 +15,7 @@ import remarkGfm from 'remark-gfm';
  * mounts and eases the formatted block in with the same `data-unblur` blur→sharp
  * mechanism, so the Typographic Unblur aesthetic is preserved end-to-end.
  */
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(true));
@@ -37,6 +37,12 @@ export function Markdown({ text }: { text: string }) {
       >
         {text}
       </ReactMarkdown>
+      {streaming && (
+        <span
+          className="ml-0.5 inline-block h-[1.05em] w-[2px] -translate-y-[1px] animate-breathe align-middle"
+          style={{ background: 'rgb(var(--c-pulse))' }}
+        />
+      )}
     </div>
   );
 }

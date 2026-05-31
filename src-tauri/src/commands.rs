@@ -338,12 +338,21 @@ fn lookup_secret(
 /// How many prior (user/assistant) turns to replay as context — bounds the prompt.
 const HISTORY_TURNS: usize = 20;
 
+/// A user-attached image from the composer. `data` is base64 (no `data:` prefix).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInput {
+    pub media_type: String,
+    pub data: String,
+}
+
 #[tauri::command]
 pub async fn submit_chat_message(
     user_prompt: String,
     provider: Option<String>,
     model: Option<String>,
     session_id: Option<String>,
+    images: Option<Vec<ImageInput>>,
     router: tauri::State<'_, Arc<McpRouter>>,
     db: tauri::State<'_, MemoryHandle>,
     crypto: tauri::State<'_, crate::crypto::CryptoState>,
@@ -353,6 +362,11 @@ pub async fn submit_chat_message(
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| "anthropic".to_string());
     let model = model.unwrap_or_default();
+    let images: Vec<crate::orchestrator::ImageInput> = images
+        .unwrap_or_default()
+        .into_iter()
+        .map(|i| (i.media_type, i.data))
+        .collect();
 
     // The api_keys.provider string is the same id selected in the BYOK panel.
     let api_key = lookup_secret(db.inner(), crypto.inner(), &provider).ok_or_else(|| {
@@ -388,6 +402,7 @@ pub async fn submit_chat_message(
         &model,
         &history,
         &user_prompt,
+        &images,
     );
     let title_fut = async {
         if first_turn {

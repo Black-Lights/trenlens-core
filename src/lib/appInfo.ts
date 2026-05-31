@@ -8,7 +8,7 @@ export const APP_TAGLINE =
   'A local-first desktop AI assistant that orchestrates any tool, web app, or CLI over the Model Context Protocol (MCP).';
 
 /** Semantic version incl. pre-release channel (matches the GitHub release tag). */
-export const APP_VERSION = '0.1.0-alpha.1';
+export const APP_VERSION = '0.1.0-alpha.2';
 export const APP_CHANNEL = 'alpha' as const;
 
 export const DEVELOPER = {

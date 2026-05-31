@@ -38,7 +38,10 @@ export function TimelineEvent({ entry }: { entry: TimelineEntry }) {
       {/* content */}
       <div className="min-w-0 pb-2">
         {entry.kind === 'user' && (
-          <p className="font-medium text-ink-muted">{entry.text}</p>
+          <div>
+            {entry.text && <p className="font-medium text-ink-muted">{entry.text}</p>}
+            {entry.images && entry.images.length > 0 && <ImageGrid images={entry.images} />}
+          </div>
         )}
 
         {entry.kind === 'assistant' && (
@@ -47,14 +50,12 @@ export function TimelineEvent({ entry }: { entry: TimelineEntry }) {
               <ThinkingHint />
             ) : entry.error ? (
               <p style={{ color: 'rgb(220 90 90)' }}>{entry.text}</p>
-            ) : entry.streaming ? (
-              // Live: per-character Typographic Unblur on the raw text.
-              <UnblurText text={entry.text} streaming />
             ) : (
-              // Settled: render Markdown (headings, lists, code, **bold**…),
-              // easing in with the same blur→sharp mechanism.
-              <Markdown text={entry.text} />
+              // Render Markdown live (headings, lists, code, **bold**, images) so the
+              // user never sees raw syntax; a caret pulses while streaming.
+              <Markdown text={entry.text} streaming={entry.streaming} />
             )}
+            {entry.images && entry.images.length > 0 && <ImageGrid images={entry.images} />}
             {entry.toolsUsed && entry.toolsUsed.length > 0 && (
               <p className="mt-1 text-[11px] text-ink-faint">used {entry.toolsUsed.join(', ')}</p>
             )}
@@ -76,6 +77,9 @@ export function TimelineEvent({ entry }: { entry: TimelineEntry }) {
                   <UnblurText text={entry.output} streaming={entry.streaming} />
                 </div>
               )}
+            {entry.images && entry.images.length > 0 && (entry.phase === 'dissolving' || entry.phase === 'done') && (
+              <ImageGrid images={entry.images} />
+            )}
           </div>
         )}
 
@@ -120,6 +124,17 @@ export function TimelineEvent({ entry }: { entry: TimelineEntry }) {
         )}
       </div>
     </motion.li>
+  );
+}
+
+/** A wrapping grid of revealed images (chat attachments / tool screenshots). */
+function ImageGrid({ images }: { images: string[] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {images.map((src, i) => (
+        <ImageReveal key={`${i}-${src.slice(0, 32)}`} src={src} alt={`image ${i + 1}`} />
+      ))}
+    </div>
   );
 }
 

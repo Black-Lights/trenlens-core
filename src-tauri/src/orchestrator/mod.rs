@@ -75,15 +75,22 @@ left History sidebar (+ New chat starts a session).";
 pub struct ChatResult {
     pub text: String,
     pub tools_used: Vec<String>,
+    /// `data:` URIs of any images produced by tools during the turn (e.g. a browser
+    /// screenshot), so the UI can render them under the answer.
+    pub images: Vec<String>,
 }
 
 /// One prior turn loaded from local history, as `(role, content)` — only `user`
 /// and `assistant` rows are forwarded for context (tool/image rows are skipped).
 pub type Turn = (String, String);
 
+/// A user-attached image: `(media_type, base64_data)` — base64 has no `data:` prefix.
+pub type ImageInput = (String, String);
+
 /// Run one conversational turn end-to-end (may span several round-trips while the
 /// model calls tools). `api_key` is already-unsealed plaintext; `model` empty →
-/// the provider default; `history` is prior (role, content) turns, oldest first.
+/// the provider default; `history` is prior (role, content) turns, oldest first;
+/// `images` are user-attached images sent with this turn (vision).
 pub async fn run_chat(
     router: &McpRouter,
     provider: &str,
@@ -91,20 +98,21 @@ pub async fn run_chat(
     model: &str,
     history: &[Turn],
     user_prompt: &str,
+    images: &[ImageInput],
 ) -> Result<ChatResult, String> {
     let client = build_client()?;
     let catalog = collect_tools(router).await;
 
     match provider.trim().to_ascii_lowercase().as_str() {
         "deepseek" => {
-            run_openai(&client, router, DEEPSEEK_URL, api_key, pick(model, DEFAULT_DEEPSEEK_MODEL), &catalog, history, user_prompt).await
+            run_openai(&client, router, DEEPSEEK_URL, api_key, pick(model, DEFAULT_DEEPSEEK_MODEL), &catalog, history, user_prompt, images).await
         }
         "kimi" | "moonshot" => {
-            run_openai(&client, router, KIMI_URL, api_key, pick(model, DEFAULT_KIMI_MODEL), &catalog, history, user_prompt).await
+            run_openai(&client, router, KIMI_URL, api_key, pick(model, DEFAULT_KIMI_MODEL), &catalog, history, user_prompt, images).await
         }
         // anthropic (and any unknown provider) → the native Messages API loop.
         _ => {
-            run_anthropic(&client, router, api_key, pick(model, DEFAULT_ANTHROPIC_MODEL), &catalog, history, user_prompt).await
+            run_anthropic(&client, router, api_key, pick(model, DEFAULT_ANTHROPIC_MODEL), &catalog, history, user_prompt, images).await
         }
     }
 }
@@ -238,18 +246,20 @@ async fn run_anthropic(
     catalog: &ToolCatalog,
     history: &[Turn],
     user_prompt: &str,
+    images: &[ImageInput],
 ) -> Result<ChatResult, String> {
     let decls = catalog.anthropic_decls();
     let tools_opt = if decls.is_empty() { None } else { Some(decls.as_slice()) };
 
     // Prior turns carry plain-string content (Anthropic accepts that); the new
-    // user prompt is appended last.
+    // user prompt is appended last (as a content array when images are attached).
     let mut messages: Vec<Value> = history
         .iter()
         .map(|(role, content)| json!({ "role": role, "content": content }))
         .collect();
-    messages.push(json!({ "role": "user", "content": user_prompt }));
+    messages.push(json!({ "role": "user", "content": anthropic_user_content(user_prompt, images) }));
     let mut tools_used: Vec<String> = Vec::new();
+    let mut images_out: Vec<String> = Vec::new();
 
     for _ in 0..MAX_TOOL_ITERS {
         let resp = call_anthropic(client, api_key, model, &messages, tools_opt).await?;
@@ -275,7 +285,7 @@ async fn run_anthropic(
         }
 
         if calls.is_empty() {
-            return Ok(ChatResult { text: text_out.trim().to_string(), tools_used });
+            return Ok(ChatResult { text: text_out.trim().to_string(), tools_used, images: images_out });
         }
 
         // Echo the assistant turn back verbatim (Anthropic requires the original
@@ -289,10 +299,15 @@ async fn run_anthropic(
                     match router.call_tool(server, tool, input).await {
                         Ok(result) => {
                             let is_error = result.get("isError").and_then(Value::as_bool).unwrap_or(false);
+                            // Build a content array carrying any image blocks so the
+                            // model can actually see screenshots, and surface those
+                            // images to the UI too.
+                            let (content, uris) = anthropic_tool_result_content(&result);
+                            images_out.extend(uris);
                             json!({
                                 "type": "tool_result",
                                 "tool_use_id": id,
-                                "content": flatten_tool_result(&result),
+                                "content": content,
                                 "is_error": is_error,
                             })
                         }
@@ -322,6 +337,7 @@ async fn run_anthropic(
             text
         },
         tools_used,
+        images: images_out,
     })
 }
 
@@ -390,6 +406,7 @@ async fn run_openai(
     catalog: &ToolCatalog,
     history: &[Turn],
     user_prompt: &str,
+    images: &[ImageInput],
 ) -> Result<ChatResult, String> {
     let decls = catalog.openai_decls();
     let tools_opt = if decls.is_empty() { None } else { Some(decls.as_slice()) };
@@ -399,8 +416,9 @@ async fn run_openai(
     for (role, content) in history {
         messages.push(json!({ "role": role, "content": content }));
     }
-    messages.push(json!({ "role": "user", "content": user_prompt }));
+    messages.push(json!({ "role": "user", "content": openai_user_content(user_prompt, images) }));
     let mut tools_used: Vec<String> = Vec::new();
+    let mut images_out: Vec<String> = Vec::new();
 
     for _ in 0..MAX_TOOL_ITERS {
         let resp = call_openai(client, url, api_key, model, &messages, tools_opt).await?;
@@ -414,7 +432,7 @@ async fn run_openai(
         let tool_calls = message.get("tool_calls").and_then(Value::as_array).cloned().unwrap_or_default();
 
         if tool_calls.is_empty() {
-            return Ok(ChatResult { text: text.trim().to_string(), tools_used });
+            return Ok(ChatResult { text: text.trim().to_string(), tools_used, images: images_out });
         }
 
         // The assistant message that requested the calls MUST precede the tool
@@ -431,7 +449,14 @@ async fn run_openai(
                 Some((server, tool)) => {
                     tools_used.push(tool.clone());
                     match router.call_tool(server, tool, input).await {
-                        Ok(result) => flatten_tool_result(&result),
+                        Ok(result) => {
+                            // OpenAI tool messages are text-only; still surface any
+                            // tool images to the UI.
+                            for (mime, data) in collect_tool_images(&result) {
+                                images_out.push(data_uri(&mime, &data));
+                            }
+                            flatten_tool_result(&result)
+                        }
                         Err(e) => format!("Tool execution failed: {e}"),
                     }
                 }
@@ -458,6 +483,7 @@ async fn run_openai(
             text
         },
         tools_used,
+        images: images_out,
     })
 }
 
@@ -614,6 +640,85 @@ fn normalize_schema(schema: Value) -> Value {
     }
 }
 
+/// Build the Anthropic user-message `content` for this turn. Plain string when no
+/// images are attached; otherwise a content array of a text block + image blocks.
+fn anthropic_user_content(prompt: &str, images: &[ImageInput]) -> Value {
+    if images.is_empty() {
+        return json!(prompt);
+    }
+    let mut blocks = vec![json!({ "type": "text", "text": prompt })];
+    for (media_type, data) in images {
+        blocks.push(json!({
+            "type": "image",
+            "source": { "type": "base64", "media_type": media_type, "data": data },
+        }));
+    }
+    json!(blocks)
+}
+
+/// Build the OpenAI-compatible user-message `content` (text + `image_url` parts).
+fn openai_user_content(prompt: &str, images: &[ImageInput]) -> Value {
+    if images.is_empty() {
+        return json!(prompt);
+    }
+    let mut parts = vec![json!({ "type": "text", "text": prompt })];
+    for (media_type, data) in images {
+        parts.push(json!({
+            "type": "image_url",
+            "image_url": { "url": data_uri(media_type, data) },
+        }));
+    }
+    json!(parts)
+}
+
+/// A `data:` URI from an MCP image block's `(mimeType, base64 data)`.
+fn data_uri(media_type: &str, data: &str) -> String {
+    format!("data:{media_type};base64,{data}")
+}
+
+/// Pull `(mimeType, base64 data)` from every image block in an MCP tool result.
+fn collect_tool_images(result: &Value) -> Vec<(String, String)> {
+    let Some(arr) = result.get("content").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for b in arr {
+        if b.get("type").and_then(Value::as_str) == Some("image") {
+            let data = b.get("data").and_then(Value::as_str).unwrap_or("");
+            let mime = b
+                .get("mimeType")
+                .or_else(|| b.get("mime_type"))
+                .and_then(Value::as_str)
+                .unwrap_or("image/png");
+            if !data.is_empty() {
+                out.push((mime.to_string(), data.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Build an Anthropic `tool_result` content value that includes any image blocks
+/// (so the model can see them), plus the `data:` URIs for the UI. Falls back to a
+/// plain text string when the tool returned no images.
+fn anthropic_tool_result_content(result: &Value) -> (Value, Vec<String>) {
+    let images = collect_tool_images(result);
+    if images.is_empty() {
+        return (json!(flatten_tool_result(result)), Vec::new());
+    }
+    let text = flatten_tool_result(result);
+    let mut blocks = vec![json!({ "type": "text", "text": text })];
+    let mut uris = Vec::with_capacity(images.len());
+    for (media_type, data) in images {
+        blocks.push(json!({
+            "type": "image",
+            "source": { "type": "base64", "media_type": media_type, "data": data },
+        }));
+        uris.push(data_uri(&media_type, &data));
+    }
+    (json!(blocks), uris)
+}
+
 /// Flatten an MCP `CallToolResult` into a text string for a tool result block.
 fn flatten_tool_result(result: &Value) -> String {
     let Some(arr) = result.get("content").and_then(Value::as_array) else {
@@ -753,6 +858,45 @@ mod tests {
         assert_eq!(o[0]["function"]["parameters"]["properties"]["message"]["type"], "string");
         // Both resolve back to the same underlying MCP tool.
         assert_eq!(cat.resolver.get("srv__echo"), Some(&("srv".to_string(), "echo".to_string())));
+    }
+
+    #[test]
+    fn collects_tool_images_and_builds_data_uri() {
+        let r = json!({ "content": [
+            { "type": "text", "text": "ok" },
+            { "type": "image", "data": "QUJD", "mimeType": "image/png" }
+        ]});
+        let imgs = collect_tool_images(&r);
+        assert_eq!(imgs, vec![("image/png".to_string(), "QUJD".to_string())]);
+        assert_eq!(data_uri("image/png", "QUJD"), "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn user_content_is_string_without_images_array_with() {
+        // No images → plain string content.
+        assert_eq!(anthropic_user_content("hi", &[]), json!("hi"));
+        assert_eq!(openai_user_content("hi", &[]), json!("hi"));
+        // With images → content array (text block + image block).
+        let imgs = vec![("image/png".to_string(), "QUJD".to_string())];
+        let a = anthropic_user_content("look", &imgs);
+        assert_eq!(a[0]["type"], "text");
+        assert_eq!(a[1]["type"], "image");
+        assert_eq!(a[1]["source"]["data"], "QUJD");
+        let o = openai_user_content("look", &imgs);
+        assert_eq!(o[1]["type"], "image_url");
+        assert_eq!(o[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn anthropic_tool_result_includes_images_when_present() {
+        let r = json!({ "content": [ { "type": "image", "data": "QUJD", "mimeType": "image/jpeg" } ]});
+        let (content, uris) = anthropic_tool_result_content(&r);
+        assert!(content.is_array());
+        assert_eq!(uris, vec!["data:image/jpeg;base64,QUJD".to_string()]);
+        // No image → plain string content, no uris.
+        let (c2, u2) = anthropic_tool_result_content(&json!({ "content": [ { "type": "text", "text": "x" } ]}));
+        assert!(c2.is_string());
+        assert!(u2.is_empty());
     }
 
     #[test]
