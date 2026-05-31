@@ -19,6 +19,14 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 
+# --- In-app auto-update (signed) ---
+# `updater` checks a signed `latest.json` manifest, downloads the new installer,
+# verifies its minisign signature against the embedded public key, and installs
+# it; `process` provides the relaunch after install. The private signing key lives
+# OUTSIDE the repo and is supplied via TAURI_SIGNING_PRIVATE_KEY at build time.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
 # --- MCP engine (multi-transport routing) ---
 # client+stdio: outbound local tools. client+streamable-http+sse: outbound remote
 # servers/web apps. server+hyper-server: the inbound axum MCP host (§3.1) that

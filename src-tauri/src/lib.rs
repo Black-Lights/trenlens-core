@@ -35,6 +35,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        // In-app auto-update: signed manifest check + download/install, then relaunch.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(router)
         .manage(host_state)
         // BYOK proxy supervisor — initialised at startup, ready to spawn on the

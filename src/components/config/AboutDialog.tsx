@@ -13,7 +13,7 @@ import {
   REPO_URL,
 } from '@/lib/appInfo';
 import { ipc } from '@/lib/ipc';
-import { checkForUpdate, type UpdateInfo } from '@/lib/updates';
+import { prepareUpdate, type PreparedUpdate } from '@/lib/updater';
 
 /**
  * About dialog — app/version/developer details, a "Download for Windows" action
@@ -22,7 +22,9 @@ import { checkForUpdate, type UpdateInfo } from '@/lib/updates';
  */
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const [checking, setChecking] = useState(false);
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [prepared, setPrepared] = useState<PreparedUpdate | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -33,10 +35,26 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const check = async () => {
-    if (checking) return;
+    if (checking || installing) return;
     setChecking(true);
-    setUpdate(await checkForUpdate());
+    setPrepared(await prepareUpdate());
     setChecking(false);
+  };
+
+  const install = async () => {
+    if (!prepared || installing) return;
+    if (prepared.install) {
+      setInstalling(true);
+      try {
+        await prepared.install(setProgress); // resolves into a relaunch on success
+      } catch (e) {
+        setInstalling(false);
+        setProgress(null);
+        setPrepared({ ...prepared, error: e instanceof Error ? e.message : String(e) });
+      }
+    } else if (prepared.url) {
+      void ipc.openExternal(prepared.url); // browser fallback: open the download
+    }
   };
 
   return (
@@ -96,17 +114,24 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
 
         {/* Updates */}
         <div className="mt-4">
-          {update?.status === 'available' ? (
+          {prepared?.available ? (
             <button
               type="button"
-              onClick={() => update.url && void ipc.openExternal(update.url)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-medium text-canvas transition-opacity hover:opacity-90"
+              onClick={() => void install()}
+              disabled={installing}
+              className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-medium text-canvas transition-opacity hover:opacity-90 disabled:opacity-70"
               style={{ background: 'rgb(var(--c-pulse))' }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
               </svg>
-              Download v{update.latest}
+              {installing
+                ? progress != null
+                  ? `Installing… ${progress}%`
+                  : 'Installing…'
+                : prepared.install
+                  ? `Download & install v${prepared.version}`
+                  : `Download v${prepared.version}`}
             </button>
           ) : (
             <button
@@ -132,16 +157,14 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
             </button>
           )}
 
-          {update && (
+          {prepared && (
             <p className="mt-1.5 text-center text-[11px]">
-              {update.status === 'latest' && (
-                <span className="text-ink-faint">You&apos;re on the latest version (v{update.latest}).</span>
-              )}
-              {update.status === 'available' && (
-                <span className="text-pulse">Update available — you have v{update.current}.</span>
-              )}
-              {update.status === 'error' && (
-                <span className="text-ink-faint">Couldn&apos;t check for updates: {update.error}</span>
+              {prepared.available ? (
+                <span className="text-pulse">Update available — you have v{prepared.current}.</span>
+              ) : prepared.error ? (
+                <span className="text-ink-faint">Couldn&apos;t check: {prepared.error}</span>
+              ) : (
+                <span className="text-ink-faint">You&apos;re on the latest version (v{prepared.current}).</span>
               )}
             </p>
           )}
