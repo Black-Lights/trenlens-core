@@ -15,11 +15,14 @@
   // SQLite-backed Durable Object (required for the Hibernation API; free-tier eligible).
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRoom"] }],
 
-  // LOCAL (matches `supabase start`). For production, override these in the
-  // Cloudflare dashboard / `[env.production].vars` with the cloud project's values.
+  // PRODUCTION — the cloud Supabase project `doakvobkqdldxggpdmly` (ES256/JWKS).
+  // These are public, non-secret values (a JWKS discovery URL + the expected
+  // iss/aud claims); the relay is verify-only and holds no Supabase secret.
+  // For local `wrangler dev` against `supabase start`, swap these back to the
+  // 127.0.0.1:54321 forms (or use an `[env]` block).
   "vars": {
-    "SUPABASE_JWKS_URL": "http://127.0.0.1:54321/auth/v1/.well-known/jwks.json",
-    "JWT_ISSUER": "http://127.0.0.1:54321/auth/v1",
+    "SUPABASE_JWKS_URL": "https://doakvobkqdldxggpdmly.supabase.co/auth/v1/.well-known/jwks.json",
+    "JWT_ISSUER": "https://doakvobkqdldxggpdmly.supabase.co/auth/v1",
     "JWT_AUDIENCE": "authenticated"
   }
 }
