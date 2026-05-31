@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   APP_CHANNEL,
   APP_NAME,
@@ -9,11 +9,11 @@ import {
   APP_VERSION,
   BUILT_WITH,
   DEVELOPER,
-  LATEST_RELEASE_URL,
   LICENSE,
   REPO_URL,
 } from '@/lib/appInfo';
 import { ipc } from '@/lib/ipc';
+import { checkForUpdate, type UpdateInfo } from '@/lib/updates';
 
 /**
  * About dialog — app/version/developer details, a "Download for Windows" action
@@ -21,6 +21,9 @@ import { ipc } from '@/lib/ipc';
  * honest alpha disclaimer. Token-driven styling; closes on backdrop click or Esc.
  */
 export function AboutDialog({ onClose }: { onClose: () => void }) {
+  const [checking, setChecking] = useState(false);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -28,6 +31,13 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const check = async () => {
+    if (checking) return;
+    setChecking(true);
+    setUpdate(await checkForUpdate());
+    setChecking(false);
+  };
 
   return (
     <motion.div
@@ -84,21 +94,58 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
 
         <p className="mt-4 text-[13px] leading-relaxed text-ink-muted">{APP_TAGLINE}</p>
 
-        {/* Download / install */}
-        <button
-          type="button"
-          onClick={() => void ipc.openExternal(LATEST_RELEASE_URL)}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-medium text-canvas transition-opacity hover:opacity-90"
-          style={{ background: 'rgb(var(--c-pulse))' }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-          </svg>
-          Download for Windows
-        </button>
-        <p className="mt-1.5 text-center text-[10.5px] text-ink-faint">
-          Opens the latest release — grab the <span className="font-mono">.exe</span> installer.
-        </p>
+        {/* Updates */}
+        <div className="mt-4">
+          {update?.status === 'available' ? (
+            <button
+              type="button"
+              onClick={() => update.url && void ipc.openExternal(update.url)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-medium text-canvas transition-opacity hover:opacity-90"
+              style={{ background: 'rgb(var(--c-pulse))' }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+              Download v{update.latest}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void check()}
+              disabled={checking}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-hairline py-2.5 text-[13px] font-medium text-ink transition-colors hover:border-pulse/60 disabled:opacity-50"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={checking ? 'animate-spin' : ''}
+              >
+                <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
+              </svg>
+              {checking ? 'Checking…' : 'Check for updates'}
+            </button>
+          )}
+
+          {update && (
+            <p className="mt-1.5 text-center text-[11px]">
+              {update.status === 'latest' && (
+                <span className="text-ink-faint">You&apos;re on the latest version (v{update.latest}).</span>
+              )}
+              {update.status === 'available' && (
+                <span className="text-pulse">Update available — you have v{update.current}.</span>
+              )}
+              {update.status === 'error' && (
+                <span className="text-ink-faint">Couldn&apos;t check for updates: {update.error}</span>
+              )}
+            </p>
+          )}
+        </div>
 
         {/* Details */}
         <dl className="mt-4 space-y-2.5 border-t border-hairline/60 pt-4 text-[12px]">

@@ -19,7 +19,14 @@ export const DEVELOPER = {
 };
 
 export const REPO_URL = 'https://github.com/Black-Lights/trenlens-core';
-/** The latest GitHub release page (where the Windows installer/.exe is published). */
+/** `owner/repo` for the GitHub API. */
+export const GITHUB_REPO = 'Black-Lights/trenlens-core';
+/** The latest GitHub release page (fallback download target). */
 export const LATEST_RELEASE_URL = `${REPO_URL}/releases/latest`;
+/**
+ * Most-recent release via the API. We list (not `/latest`) because `/latest`
+ * excludes pre-releases — and our alpha releases are all pre-releases.
+ */
+export const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=1`;
 export const LICENSE = 'Apache-2.0';
 export const BUILT_WITH = ['Tauri v2', 'Rust', 'Next.js', 'TypeScript', 'Drizzle ORM'];
