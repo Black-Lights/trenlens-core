@@ -34,10 +34,19 @@ export type VerifiedClaims = JWTPayload & { sub: string };
  * The `sub` claim is the Supabase user_id the relay pairs connections on.
  */
 export async function verifyToken(token: string, env: Env): Promise<VerifiedClaims> {
-  const { payload } = await jwtVerify(token, resolver(env.SUPABASE_JWKS_URL), {
-    issuer: env.JWT_ISSUER,
-    audience: env.JWT_AUDIENCE,
-  });
-  if (!payload.sub) throw new Error('token has no sub claim');
-  return payload as VerifiedClaims;
+  try {
+    const { payload } = await jwtVerify(token, resolver(env.SUPABASE_JWKS_URL), {
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    });
+    if (!payload.sub) throw new Error('token has no sub claim');
+    return payload as VerifiedClaims;
+  } catch (e) {
+    // Surface the SPECIFIC reason for diagnostics (jose sets `.code`, e.g.
+    // ERR_JWT_EXPIRED, ERR_JWS_SIGNATURE_VERIFICATION_FAILED,
+    // ERR_JWT_CLAIM_VALIDATION_FAILED for a bad iss/aud). Logged, never returned.
+    const code = (e as { code?: string }).code ?? 'ERR_UNKNOWN';
+    console.error(`[relay:auth] JWT verification failed: ${code} — ${e instanceof Error ? e.message : String(e)}`);
+    throw e;
+  }
 }

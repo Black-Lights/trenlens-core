@@ -22,6 +22,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
 use crate::crypto::CryptoState;
@@ -108,11 +110,15 @@ async fn connect(relay_url: &str, jwt: &str, room_id: &str) -> Result<WsStream, 
         "{RELAY_SUBPROTOCOL}, auth.{}, room.{room_id}, role.desktop",
         URL_SAFE_NO_PAD.encode(jwt)
     );
-    let request = http::Request::builder()
-        .uri(relay_url)
-        .header("Sec-WebSocket-Protocol", protocols)
-        .body(())
-        .map_err(|e| format!("build request: {e}"))?;
+    // Let tungstenite synthesize a COMPLETE upgrade request from the URL — Host,
+    // Upgrade, Connection, Sec-WebSocket-Version, and the random Sec-WebSocket-Key —
+    // then append our subprotocol tokens. Hand-building a bare `http::Request` omits
+    // Sec-WebSocket-Key, which fails the handshake ("missing sec-websocket-key").
+    let mut request = relay_url.into_client_request().map_err(redact_ws_err)?;
+    request.headers_mut().append(
+        "Sec-WebSocket-Protocol",
+        HeaderValue::from_str(&protocols).map_err(|e| format!("invalid subprotocol header: {e}"))?,
+    );
 
     let (ws, _resp) = timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(request))
         .await

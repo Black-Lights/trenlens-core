@@ -25,9 +25,11 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname !== '/connect') {
+      console.log(`[relay] 404 wrong path: ${request.method} ${url.pathname}`);
       return new Response('not found', { status: 404 });
     }
     if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+      console.log(`[relay] 426 not a websocket upgrade (Upgrade="${request.headers.get('Upgrade')}")`);
       return new Response('expected a websocket upgrade', { status: 426 });
     }
 
@@ -35,8 +37,13 @@ export default {
     const tokenB64 = stripPrefix(offered, 'auth.');
     const pairingId = stripPrefix(offered, 'room.');
     const role = parseRole(stripPrefix(offered, 'role.'));
+    // Diagnostic: which tokens arrived (NEVER the JWT itself) + how many were offered.
+    console.log(
+      `[relay] /connect offered=${offered.length} hasAuth=${!!tokenB64} room=${pairingId ?? '∅'} role=${role ?? '∅'}`,
+    );
 
     if (!tokenB64 || !pairingId || !role) {
+      console.log('[relay] 400 missing auth/room/role subprotocol');
       return new Response('missing auth / room / role subprotocol', { status: 400 });
     }
 
@@ -44,9 +51,12 @@ export default {
     try {
       sub = (await verifyToken(b64urlToString(tokenB64), env)).sub;
     } catch {
-      // Deliberately opaque: don't leak whether it was signature, exp, iss, or aud.
+      // Deliberately opaque to the client; the specific reason is logged in auth.ts.
+      console.log('[relay] 401 unauthorized (see auth error above)');
       return new Response('unauthorized', { status: 401 });
     }
+
+    console.log(`[relay] 101 upgrade ok → room ${sub.slice(0, 8)}…:${pairingId} role=${role}`);
 
     // Deterministic name → the desktop and phone(s) of this account+room converge
     // on one DO instance. Different sub or different pairingId ⇒ a different room.
