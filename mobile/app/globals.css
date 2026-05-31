@@ -97,6 +97,36 @@ button:disabled {
   margin-top: 12px;
 }
 
+/* Friendly, non-alarming note (e.g. camera blocked → use the link). */
+.note {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+/* "or" separator between the QR and the paste-link paths on the pairing screen. */
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 16px 0 0;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+.divider::before {
+  margin-right: 10px;
+}
+.divider::after {
+  margin-left: 10px;
+}
+
 .claims {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 12px;
