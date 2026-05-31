@@ -32,7 +32,11 @@ that the app polls.
    ```
    Output (Windows):
    - `src-tauri/target/release/bundle/nsis/*-setup.exe` + `*-setup.exe.sig`
-   - `src-tauri/target/release/bundle/msi/*.msi` + `*.msi.sig`
+
+   > **MSI note:** the bundle targets only `nsis`. WiX/MSI rejects non-numeric
+   > pre-release identifiers (`-alpha.N`), and NSIS is what the updater uses on
+   > Windows anyway. To also ship an MSI, override the MSI version with a numeric
+   > one via `bundle.windows.wix.version`, or use a numeric pre-release (`-1`).
 
 3. **Create the GitHub (pre-)release** and upload the installer:
    ```bash
