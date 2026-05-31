@@ -18,6 +18,7 @@ mod mcp;
 mod memory;
 mod orchestrator;
 mod proxy;
+mod remote;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +45,9 @@ pub fn run() {
         // user's toggle (§6). We do NOT auto-spawn: a keyless proxy is pointless,
         // and spawning is gated on the user picking a provider + sealed key.
         .manage(proxy::ProxyState::default())
+        // Remote Control (§Phase 3): holds the armed E2E pairing session (ephemeral
+        // AES key + room id). No socket is opened until the user enables it (Phase 4).
+        .manage(remote::RemoteState::default())
         .setup(move |app| {
             // Open the local DB (sole owner = Rust) and apply migrations, then
             // hand the connection to the SQL-bridge commands via managed state.
@@ -93,6 +97,7 @@ pub fn run() {
             commands::generate_image,
             commands::submit_chat_message,
             commands::summon_overlay,
+            commands::remote_start_pairing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running trenlens-core");

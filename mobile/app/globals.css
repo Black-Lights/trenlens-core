@@ -108,3 +108,17 @@ button:disabled {
   margin-top: 12px;
   line-height: 1.5;
 }
+
+.qr-reader {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.qr-reader video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}

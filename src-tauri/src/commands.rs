@@ -435,3 +435,19 @@ pub async fn summon_overlay(_origin: String) -> Result<(), String> {
     // TODO(overlay): validate origin against allow-list, show/focus overlay window.
     Err("not implemented: overlay::summon".into())
 }
+
+// ─── Remote Control (E2E pairing, §Phase 3) ─────────────────────────────────
+//
+// `remote_start_pairing` mints a fresh ephemeral AES-256 key + pairing id in the
+// Rust crypto layer and returns the `trenlens://pair` QR payload. Only the
+// base64url key string crosses IPC — and only so the webview can draw the QR; the
+// raw key never leaves the backend, and the phone receives it by scanning, not via
+// IPC. Calling again rotates the key (invalidating any previously shown QR). The
+// WebSocket connect/disconnect commands that consume this session land in Phase 4.
+
+#[tauri::command]
+pub async fn remote_start_pairing(
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<crate::remote::PairingInfo, String> {
+    Ok(remote.start_pairing())
+}

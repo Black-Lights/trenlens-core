@@ -9,6 +9,7 @@
  * flow: QR scan → import the E2E key → open the relay WebSocket → chat timeline.
  */
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import type { Session } from '@supabase/supabase-js';
@@ -97,6 +98,9 @@ export default function Home() {
               <b>token:</b> {token.slice(0, 24)}…{token.slice(-12)}
             </div>
           </div>
+          <Link href="/scan">
+            <button>Pair a desktop →</button>
+          </Link>
           <button className="secondary" onClick={handleSignOut} disabled={busy}>
             Sign out
           </button>

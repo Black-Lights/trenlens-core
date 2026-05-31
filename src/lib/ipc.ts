@@ -138,6 +138,17 @@ export interface ChatResult {
   images: string[];
 }
 
+/**
+ * QR pairing payload from `remote_start_pairing` (mirrors `remote::PairingInfo`).
+ * `keyB64Url` is the base64url AES-256 key — it crosses IPC ONLY so the webview can
+ * draw it into the QR; the phone receives it by scanning, never via IPC.
+ */
+export interface PairingInfo {
+  pairingId: string;
+  keyB64Url: string;
+  uri: string;
+}
+
 export const ipc = {
   // memory / conversation history
   listConversations: () => call<Conversation[]>('list_conversations'),
@@ -195,6 +206,10 @@ export const ipc = {
 
   // overlay
   summonOverlay: (origin: string) => call<void>('summon_overlay', { origin }),
+
+  // remote control (§Phase 3) — mint an ephemeral E2E AES key + room id; returns the
+  // `trenlens://pair` QR payload the desktop renders. Calling again rotates the key.
+  remoteStartPairing: () => call<PairingInfo>('remote_start_pairing'),
 
   /**
    * Open a URL in the user's default browser via the Tauri opener plugin
