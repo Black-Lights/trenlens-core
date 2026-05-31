@@ -185,6 +185,24 @@ export const ipc = {
   // overlay
   summonOverlay: (origin: string) => call<void>('summon_overlay', { origin }),
 
+  /**
+   * Open a URL in the user's default browser via the Tauri opener plugin
+   * (`opener:default` capability). Falls back to `window.open` in the browser
+   * preview. Used by the About dialog's "Download" / GitHub links.
+   */
+  openExternal: async (url: string): Promise<void> => {
+    const invoke = getInvoke();
+    if (invoke) {
+      try {
+        await invoke<void>('plugin:opener|open_url', { url, with: null });
+        return;
+      } catch {
+        /* fall through to a plain window.open */
+      }
+    }
+    if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener,noreferrer');
+  },
+
   // local SQL bridge (consumed by the Drizzle sqlite-proxy adapter in db.ts)
   executeSql: (query: string, params: unknown[]) =>
     call<{ rowsAffected: number; lastInsertRowid: number }>('execute_sql', { query, params }),

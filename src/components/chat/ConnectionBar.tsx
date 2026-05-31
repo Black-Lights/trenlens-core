@@ -21,12 +21,14 @@ export function ConnectionBar({
   configOpen = false,
   onToggleHistory,
   historyOpen = false,
+  onAbout,
 }: {
   connections: Connection[];
   onToggleConfig?: () => void;
   configOpen?: boolean;
   onToggleHistory?: () => void;
   historyOpen?: boolean;
+  onAbout?: () => void;
 }) {
   return (
     <header
@@ -79,6 +81,19 @@ export function ConnectionBar({
         )}
       </div>
       <div className="flex items-center gap-1.5">
+        {onAbout && (
+          <button
+            type="button"
+            onClick={onAbout}
+            aria-label="About TrenLens Core"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-hairline text-ink-muted transition-colors hover:text-ink"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+          </button>
+        )}
         {onToggleConfig && (
           <button
             type="button"

@@ -1,6 +1,6 @@
 {
   "name": "trenlens-core",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "Cross-platform standalone desktop AI assistant that orchestrates any tool, web app, or CLI over the Model Context Protocol (MCP). Tauri v2 (Rust) + Next.js.",
   "type": "module",

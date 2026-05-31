@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { ConnectionBar, type Connection } from '@/components/chat/ConnectionBar';
 import { Composer } from '@/components/chat/Composer';
+import { AboutDialog } from '@/components/config/AboutDialog';
 import { HistorySidebar } from '@/components/config/HistorySidebar';
 import { ServerSidebar } from '@/components/config/ServerSidebar';
 import { HoverSummon } from '@/components/overlay/HoverSummon';
@@ -24,6 +25,7 @@ export default function Page() {
   const [input, setInput] = useState('');
   const [configOpen, setConfigOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const connections: Connection[] = mcp.servers.map((s) => ({
     id: s.id,
@@ -43,6 +45,7 @@ export default function Page() {
         onToggleConfig={() => setConfigOpen((v) => !v)}
         historyOpen={historyOpen}
         onToggleHistory={() => setHistoryOpen((v) => !v)}
+        onAbout={() => setAboutOpen(true)}
       />
 
       <div className="relative flex min-h-0 flex-1">
@@ -94,6 +97,8 @@ export default function Page() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>{aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}</AnimatePresence>
 
       <HoverSummon />
     </main>
