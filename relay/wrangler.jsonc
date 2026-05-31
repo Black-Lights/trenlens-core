@@ -1,0 +1,28 @@
+{
+  // TrenLens Remote Control relay — Cloudflare Worker + Durable Object.
+  // `wrangler dev` runs this locally (no Cloudflare login needed); `wrangler deploy`
+  // ships it (needs `wrangler login`). See ../REMOTE_ARCHITECTURE_PLAN.md Phase 2.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trenlens-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true },
+
+  // The stateful coordination point: one RelayRoom instance per (user_id:pairingId).
+  "durable_objects": {
+    "bindings": [{ "name": "RELAY_ROOM", "class_name": "RelayRoom" }]
+  },
+  // SQLite-backed Durable Object (required for the Hibernation API; free-tier eligible).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRoom"] }],
+
+  // PRODUCTION — the cloud Supabase project `doakvobkqdldxggpdmly` (ES256/JWKS).
+  // These are public, non-secret values (a JWKS discovery URL + the expected
+  // iss/aud claims); the relay is verify-only and holds no Supabase secret.
+  // For local `wrangler dev` against `supabase start`, swap these back to the
+  // 127.0.0.1:54321 forms (or use an `[env]` block).
+  "vars": {
+    "SUPABASE_JWKS_URL": "https://doakvobkqdldxggpdmly.supabase.co/auth/v1/.well-known/jwks.json",
+    "JWT_ISSUER": "https://doakvobkqdldxggpdmly.supabase.co/auth/v1",
+    "JWT_AUDIENCE": "authenticated"
+  }
+}

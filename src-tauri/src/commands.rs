@@ -87,6 +87,15 @@ pub async fn append_message(
     db.append_message(&msg.conversation_id, &msg.role, &msg.content)
 }
 
+/// Delete a conversation and its messages (the History sidebar's trash action).
+#[tauri::command]
+pub async fn delete_conversation(
+    id: String,
+    db: tauri::State<'_, MemoryHandle>,
+) -> Result<(), String> {
+    db.delete_conversation(&id)
+}
+
 /// Reopen a session: every stored turn, oldest first, for the timeline to replay.
 #[tauri::command]
 pub async fn list_messages(
@@ -302,41 +311,18 @@ pub async fn generate_image(
     // Best-effort: fetch + unseal the stored Ideogram key for the typography route.
     // Used only if the router picks Ideogram; absent/failed → the pipeline falls
     // back to a placeholder. The plaintext stays in this process.
-    let ideogram_key = lookup_secret(db.inner(), crypto.inner(), "ideogram");
+    let ideogram_key = crate::orchestrator::lookup_secret(db.inner(), crypto.inner(), "ideogram");
     Ok(crate::image::generate(&req.prompt, req.force_route.as_deref(), ideogram_key).await)
-}
-
-/// Read the latest sealed secret for `provider` from `api_keys` and unseal it
-/// in-process. Returns `None` on any miss/decrypt failure so callers degrade
-/// gracefully (e.g. the placeholder probe row never unseals to a real key).
-fn lookup_secret(
-    db: &MemoryHandle,
-    crypto: &crate::crypto::CryptoState,
-    provider: &str,
-) -> Option<String> {
-    let rows = db
-        .query(
-            "SELECT secret_ciphertext FROM api_keys WHERE provider = ?1 ORDER BY created_at DESC LIMIT 1",
-            &[serde_json::Value::String(provider.to_string())],
-        )
-        .ok()?;
-    let ciphertext = rows.first()?.first()?.as_str()?;
-    crypto.unseal(ciphertext).ok()
 }
 
 // ─── Conversational orchestrator (direct multi-provider agentic loop) ───────
 //
-// Plain-English turns from the composer land here. We resolve the active provider
-// (anthropic | deepseek | kimi), fetch that provider's sealed key from `api_keys`,
-// unseal it in-process (§5 — plaintext never crosses IPC), load the session's
-// prior turns for context, and hand it all to the orchestrator, which declares the
-// connected MCP tools to the model and runs the tool-call loop. The user prompt and
-// the assistant's answer are persisted under `session_id` so they survive a restart.
-// `/image` and explicit `server::tool` invocations are handled on the frontend and
-// never reach here.
-
-/// How many prior (user/assistant) turns to replay as context — bounds the prompt.
-const HISTORY_TURNS: usize = 20;
+// Plain-English turns from the composer land here, then run through the shared
+// `orchestrator::run_turn` core — the SAME path the Remote Control socket handler
+// uses (Phase 4), so a phone-driven turn is byte-identical to a local one. This
+// command's only job is to map the typed IPC args into `TurnParams` and reach the
+// managed states via `tauri::State`. `/image` and explicit `server::tool`
+// invocations are handled on the frontend and never reach here.
 
 /// A user-attached image from the composer. `data` is base64 (no `data:` prefix).
 #[derive(Deserialize)]
@@ -356,75 +342,33 @@ pub async fn submit_chat_message(
     router: tauri::State<'_, Arc<McpRouter>>,
     db: tauri::State<'_, MemoryHandle>,
     crypto: tauri::State<'_, crate::crypto::CryptoState>,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
 ) -> Result<crate::orchestrator::ChatResult, String> {
-    let provider = provider
-        .map(|p| p.trim().to_ascii_lowercase())
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| "anthropic".to_string());
-    let model = model.unwrap_or_default();
-    let images: Vec<crate::orchestrator::ImageInput> = images
-        .unwrap_or_default()
-        .into_iter()
-        .map(|i| (i.media_type, i.data))
-        .collect();
-
-    // The api_keys.provider string is the same id selected in the BYOK panel.
-    let api_key = lookup_secret(db.inner(), crypto.inner(), &provider).ok_or_else(|| {
-        format!("No {provider} key found. Add one in the BYOK panel (provider: {provider}) and try again.")
-    })?;
-
-    // Replay prior user/assistant turns for multi-turn context (tool/image rows
-    // are skipped — the model gets the conversation, not raw tool payloads).
-    let history: Vec<crate::orchestrator::Turn> = match &session_id {
-        Some(sid) => {
-            let mut turns: Vec<crate::orchestrator::Turn> = db
-                .list_messages(sid)?
-                .into_iter()
-                .filter(|(_, role, _)| role == "user" || role == "assistant")
-                .map(|(_, role, content)| (role, content))
-                .collect();
-            if turns.len() > HISTORY_TURNS {
-                turns = turns.split_off(turns.len() - HISTORY_TURNS);
-            }
-            turns
-        }
-        None => Vec::new(),
+    // Keep copies for the Remote Control mirror (the params move below).
+    let mirror_session = session_id.clone();
+    let mirror_prompt = user_prompt.clone();
+    let params = crate::orchestrator::TurnParams {
+        user_prompt,
+        provider,
+        model,
+        session_id,
+        // Map the composer's image DTOs into the orchestrator's (media_type, base64) shape.
+        images: images
+            .unwrap_or_default()
+            .into_iter()
+            .map(|i| (i.media_type, i.data))
+            .collect(),
     };
-
-    // On the first turn of a session, ask the model to name the chat from the
-    // user's opening message — run CONCURRENTLY with the answer (it only needs the
-    // prompt), so it overlaps the longer chat turn and adds no perceptible latency.
-    let first_turn = history.is_empty() && session_id.is_some();
-    let chat_fut = crate::orchestrator::run_chat(
-        router.inner(),
-        &provider,
-        &api_key,
-        &model,
-        &history,
-        &user_prompt,
-        &images,
+    let result = crate::orchestrator::run_turn(router.inner(), db.inner(), crypto.inner(), params).await?;
+    // Mirror this desktop-typed turn to a paired phone (no-op when not connected or
+    // the turn isn't in the shared session), so both timelines stay in sync.
+    remote.broadcast_turn(
+        mirror_session.as_deref(),
+        &mirror_prompt,
+        &result.text,
+        &result.tools_used,
+        &result.images,
     );
-    let title_fut = async {
-        if first_turn {
-            crate::orchestrator::generate_title(&provider, &api_key, &model, &user_prompt).await
-        } else {
-            None
-        }
-    };
-    let (result, title) = tokio::join!(chat_fut, title_fut);
-    let result = result?;
-
-    // Persist the round-trip so the session reloads intact (best-effort — a
-    // storage hiccup must not sink an otherwise-successful answer).
-    if let Some(sid) = &session_id {
-        let _ = db.append_message(sid, "user", &user_prompt);
-        let _ = db.append_message(sid, "assistant", &result.text);
-        // LLM title wins over the first-message snippet set by append_message.
-        if let Some(title) = title {
-            let _ = db.set_conversation_title(sid, &title);
-        }
-    }
-
     Ok(result)
 }
 
@@ -434,4 +378,101 @@ pub async fn submit_chat_message(
 pub async fn summon_overlay(_origin: String) -> Result<(), String> {
     // TODO(overlay): validate origin against allow-list, show/focus overlay window.
     Err("not implemented: overlay::summon".into())
+}
+
+// ─── Remote Control (E2E pairing, §Phase 3) ─────────────────────────────────
+//
+// `remote_start_pairing` mints a fresh ephemeral AES-256 key + pairing id in the
+// Rust crypto layer and returns the `trenlens://pair` QR payload. Only the
+// base64url key string crosses IPC — and only so the webview can draw the QR; the
+// raw key never leaves the backend, and the phone receives it by scanning, not via
+// IPC. Calling again rotates the key (invalidating any previously shown QR). The
+// WebSocket connect/disconnect commands that consume this session land in Phase 4.
+
+#[tauri::command]
+pub async fn remote_start_pairing(
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<crate::remote::PairingInfo, String> {
+    Ok(remote.start_pairing())
+}
+
+// ─── Remote Control (live relay connection, §Phase 4) ───────────────────────
+//
+// The desktop authenticates the WebSocket with the SAME Supabase JWT the frontend
+// already holds (the relay verifies it at the upgrade, §3.1), so the token is passed
+// in from the webview rather than minted in Rust. `remote_connect` spawns the
+// headless background client for the armed pairing; `remote_update_token` pushes a
+// refreshed token before the ~1h expiry (used on the next reconnect);
+// `remote_disconnect` stops the client AND drops the E2E key (re-pair to reconnect);
+// `remote_status` polls state (the panel also gets pushed `remote://status` events).
+
+#[tauri::command]
+pub async fn remote_connect(
+    jwt: String,
+    relay_url: Option<String>,
+    app: tauri::AppHandle,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<crate::remote::RemoteStatus, String> {
+    remote.connect(&app, jwt, relay_url)
+}
+
+#[tauri::command]
+pub async fn remote_update_token(
+    jwt: String,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<(), String> {
+    remote.update_token(jwt)
+}
+
+#[tauri::command]
+pub async fn remote_disconnect(
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<crate::remote::RemoteStatus, String> {
+    Ok(remote.disconnect())
+}
+
+#[tauri::command]
+pub async fn remote_status(
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<crate::remote::RemoteStatus, String> {
+    Ok(remote.status())
+}
+
+// ─── Remote Control (live two-way timeline sync, §Phase 6) ──────────────────
+//
+// The desktop's active conversation IS the shared session the phone mirrors. The UI
+// calls this whenever that conversation changes (and on connect): it binds the id so
+// a desktop turn under it is broadcast to the phone, then pushes that conversation's
+// stored timeline so the phone backfills and adopts the same id (its next turn then
+// lands in the same conversation). `null` clears the binding. Phone-driven turns flow
+// the other way via the `remote://turn` event the Rust client emits.
+
+#[tauri::command]
+pub async fn remote_set_conversation(
+    session_id: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    db: tauri::State<'_, MemoryHandle>,
+    remote: tauri::State<'_, crate::remote::RemoteState>,
+) -> Result<(), String> {
+    // Always record the desktop's selected engine so phone turns adopt it. Push the
+    // timeline ONLY when the bound conversation actually changes (connect / chat
+    // switch) — a mere provider/model change must not re-sync the phone's timeline.
+    let changed = remote.bound_session().as_deref() != session_id.as_deref();
+    remote.set_bound_session(session_id.clone());
+    remote.set_bound_model(provider, model);
+    if changed {
+        if let Some(cid) = &session_id {
+            // Only user/assistant turns replay (tool/image rows are skipped, matching
+            // the orchestrator's history filter), as (role, content) pairs oldest-first.
+            let turns: Vec<(String, String)> = db
+                .list_messages(cid)?
+                .into_iter()
+                .filter(|(_, role, _)| role == "user" || role == "assistant")
+                .map(|(_, role, content)| (role, content))
+                .collect();
+            remote.push_history(cid, turns);
+        }
+    }
+    Ok(())
 }

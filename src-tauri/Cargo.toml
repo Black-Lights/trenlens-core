@@ -77,6 +77,23 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ] }
 
+# --- Remote Control WebSocket client (§Phase 4) ---
+# Headless background client that joins the Cloudflare blind relay and pipes
+# decrypted commands into the orchestrator. `connect` gives `connect_async`, which
+# accepts an `http::Request` so we can set the four `Sec-WebSocket-Protocol` tokens
+# (auth/room/role + version) the relay's bouncer reads (§3.1). `rustls-tls-webpki-roots`
+# keeps us on rustls/`ring` — same TLS stack as reqwest, no OpenSSL on Windows; it
+# transitively pulls `handshake` + the rustls/webpki-roots deps. `default-features =
+# false` drops the native-tls path. `futures-util` splits the socket into read/write
+# halves; `http` builds the upgrade request. (tokio `full`, aes-gcm, base64,
+# serde_json are already present.)
+tokio-tungstenite = { version = "0.29", default-features = false, features = [
+    "connect",
+    "rustls-tls-webpki-roots",
+] }
+futures-util = "0.3"
+http = "1"
+
 # --- serde / misc ---
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

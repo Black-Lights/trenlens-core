@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
+import { RemotePairing } from '@/components/remote/RemotePairing';
 import type { McpServerDto, McpTool, ProxyStatus } from '@/lib/ipc';
 import { costFor, modelsFor, PROVIDERS } from '@/lib/models';
 import type { DbStatus, RegisterInput, SaveKeyInput, SealStatus } from '@/lib/useMcp';
@@ -345,6 +346,9 @@ export function ServerSidebar({
           <p className="mt-2 break-words font-mono text-[10px] text-ink-faint">{proxyStatus.message}</p>
         )}
       </section>
+
+      {/* ── Remote Control: E2E pairing QR (§Phase 3) ── */}
+      <RemotePairing />
 
       {/* ── Connected servers ── */}
       <section className="border-t border-hairline/60 px-4 py-4">

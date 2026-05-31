@@ -1,0 +1,11 @@
+# Supabase
+.branches
+.temp
+
+# JWT signing keys — private key material, NEVER commit (see config.toml auth.signing_keys_path)
+signing_keys.json
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local

@@ -5,6 +5,38 @@ All notable changes to TrenLens Core are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0-alpha.4] - 2026-05-31
+
+### Added
+- **Remote Control — drive your desktop from your phone.** An end-to-end encrypted
+  "authenticated blind relay" lets a phone control the local TrenLens engine:
+  Supabase (ES256 / JWKS) identity, a Cloudflare Worker + Durable Object relay that
+  only ever forwards opaque ciphertext, AES-256-GCM E2E with QR/link pairing, a
+  headless Rust WebSocket client on the desktop, and an installable mobile PWA. Sign
+  in on both devices with the same account, pair, and chat. See `DEPLOYMENT.md`.
+- **Live two-way timeline sync.** The desktop's active conversation is mirrored to
+  the phone and back — type on either side and it appears (and answers) on both, in
+  one shared, persisted conversation. Switching chats on the desktop re-syncs the
+  phone.
+- **Camera-optional pairing.** The mobile pairing screen no longer dead-ends when the
+  camera is denied (common on iOS): the camera starts on a tap, and a paste-the-link
+  path is always available (desktop **Copy link** → paste on the phone), with
+  friendly messages for blocked/missing cameras.
+- **Delete chats.** The desktop History sidebar now has a per-chat delete with a
+  styled in-app confirmation popup (replacing the native browser dialog).
+- **`DEPLOYMENT.md`** — a step-by-step production deployment playbook (Supabase ES256
+  keys, Cloudflare Worker + Pages, env setup for desktop and mobile).
+
+### Changed
+- **Remote turns honor the desktop's engine.** A phone turn (which sends no
+  provider/model) now runs on the provider/model selected on the desktop — not just
+  the Anthropic default — so it works across Anthropic / DeepSeek / Kimi.
+
+### Fixed
+- **Cloudflare relay handshake.** The desktop's Rust WebSocket client now synthesizes
+  a complete upgrade request (`Sec-WebSocket-Key`, etc.) so it passes the relay
+  handshake instead of failing with a missing-header protocol error.
+
 ## [0.1.0-alpha.3] - 2026-05-31
 
 ### Fixed
@@ -60,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **About dialog** with version, developer, license, and update controls.
 - **Apache-2.0** license; signed NSIS installer published to GitHub Releases.
 
+[0.1.0-alpha.4]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Black-Lights/trenlens-core/releases/tag/v0.1.0-alpha.1

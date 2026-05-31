@@ -1,0 +1,24 @@
+{
+  "name": "trenlens-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TrenLens Remote Control — Cloudflare Worker + Durable Object 'blind relay'. Authenticates each WebSocket with a Supabase JWT (verified at the edge against the JWKS), pairs connections by user_id, and forwards opaque E2E-encrypted frames. See ../REMOTE_ARCHITECTURE_PLAN.md (Phase 2).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/relay.e2e.mjs"
+  },
+  "dependencies": {
+    "jose": "^6.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

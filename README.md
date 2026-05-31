@@ -27,7 +27,15 @@ Drizzle ORM (over IPC) · Framer Motion · next-themes.
   relative cost badge.
 - **Conversation history.** Sessions persist to a local SQLite database and reopen
   intact across restarts. New sessions are auto-named by the model from the first
-  message (generated concurrently with the answer, so it adds no latency).
+  message (generated concurrently with the answer, so it adds no latency), and can be
+  deleted from the History sidebar.
+- **Remote Control — drive your desktop from your phone.** An end-to-end encrypted
+  *authenticated blind relay* lets an installable mobile PWA control the local
+  engine: Supabase (ES256) identity, a Cloudflare Worker + Durable Object relay that
+  only ever forwards opaque ciphertext, and AES-256-GCM E2E with QR/link pairing. The
+  conversation syncs live in both directions — type on the phone or the desktop and
+  it appears (and answers) on both. See **[DEPLOYMENT.md](./DEPLOYMENT.md)** to put it
+  online with your own Supabase + Cloudflare accounts.
 - **BYOK, sealed locally.** Provider keys are encrypted with AES-256-GCM; the master
   key lives in your OS keychain and never crosses to the UI or touches the DB file.
   The panel shows at a glance which providers have a key sealed.
@@ -54,17 +62,22 @@ Drizzle ORM (over IPC) · Framer Motion · next-themes.
 trenlens-core/
 ├─ RESEARCH_AND_GUIDELINES.md   # architecture spec
 ├─ PROGRESS_TRACKER.md          # build log / phase status
+├─ REMOTE_ARCHITECTURE_PLAN.md  # Remote Control design (the blind-relay architecture)
+├─ DEPLOYMENT.md                # production deployment playbook (Supabase + Cloudflare)
 ├─ src/                          # Next.js frontend
 │  ├─ app/                       # layout, page, globals.css (theme tokens)
 │  ├─ components/
 │  │  ├─ timeline/               # Timeline, MorphingNode, UnblurText, Markdown
 │  │  ├─ chat/                   # Composer, ConnectionBar
-│  │  └─ config/                 # ServerSidebar (BYOK + tools), HistorySidebar
+│  │  ├─ config/                 # ServerSidebar (BYOK + tools), HistorySidebar, ConfirmDialog
+│  │  └─ remote/                 # RemotePairing (sign-in → QR → live status)
 │  ├─ db/schema.ts               # Drizzle schema
-│  └─ lib/                       # ipc.ts bridge, useMcp.ts controller, models.ts
-└─ src-tauri/                    # Rust host
-   └─ src/{lib,commands}.rs      # plugin wiring + typed IPC surface
-   └─ src/{mcp,memory,crypto,proxy,image,orchestrator}/  # subsystems
+│  └─ lib/                       # ipc.ts bridge, useMcp.ts controller, models.ts, remote.ts
+├─ src-tauri/                    # Rust host
+│  └─ src/{lib,commands}.rs      # plugin wiring + typed IPC surface
+│  └─ src/{mcp,memory,crypto,proxy,image,orchestrator,remote}/  # subsystems
+├─ relay/                        # Cloudflare Worker + Durable Object blind relay
+└─ mobile/                       # mobile PWA (Next.js static export → Cloudflare Pages)
 ```
 
 ## Develop

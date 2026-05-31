@@ -1,6 +1,6 @@
 {
   "name": "trenlens-core",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "private": true,
   "description": "Cross-platform standalone desktop AI assistant that orchestrates any tool, web app, or CLI over the Model Context Protocol (MCP). Tauri v2 (Rust) + Next.js.",
   "type": "module",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.106.2",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "ai": "^5.0.0",
@@ -26,6 +27,7 @@
     "framer-motion": "^12.0.0",
     "next": "^15.5.18",
     "next-themes": "^0.4.6",
+    "qrcode.react": "^4.2.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-markdown": "^10.1.0",
@@ -40,6 +42,7 @@
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.0",
+    "jose": "^6.2.3",
     "postcss": "^8.5.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.0"

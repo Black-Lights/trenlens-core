@@ -1,0 +1,12 @@
+{
+  "//": "SCAFFOLD for the v0.1.0-alpha.4 auto-update. The live updater reads main/latest.json (still alpha.3 + a valid signature) so current installs keep updating. After the signed `npm run tauri:build`: fill `signature` (the contents of the *-setup.exe.sig file) and `pub_date`, verify the `url` matches the uploaded asset, then copy this file OVER latest.json and commit to main. Remove this `//` key when you do.",
+  "version": "0.1.0-alpha.4",
+  "notes": "Remote Control: drive your desktop from your phone over a zero-knowledge Cloudflare blind relay (E2E AES-256-GCM, QR/link pairing) with live two-way chat sync. Plus desktop chat deletion with a styled confirm dialog, camera-optional mobile pairing, and per-engine remote turns. See the GitHub release for details.",
+  "pub_date": "REPLACE_WITH_ISO8601_PUBLISH_TIMESTAMP",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "REPLACE_WITH_CONTENTS_OF_THE_-setup.exe.sig_FILE",
+      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.4/TrenLens-Core_0.1.0-alpha.4_x64-setup.exe"
+    }
+  }
+}

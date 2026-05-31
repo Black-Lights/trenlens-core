@@ -138,6 +138,43 @@ export interface ChatResult {
   images: string[];
 }
 
+/**
+ * QR pairing payload from `remote_start_pairing` (mirrors `remote::PairingInfo`).
+ * `keyB64Url` is the base64url AES-256 key — it crosses IPC ONLY so the webview can
+ * draw it into the QR; the phone receives it by scanning, never via IPC.
+ */
+export interface PairingInfo {
+  pairingId: string;
+  keyB64Url: string;
+  uri: string;
+}
+
+/**
+ * Live connection state of the desktop Remote Control client (mirrors
+ * `remote::RemoteStatus`). `paired` is true whenever a session is armed; `roomId`
+ * is the non-secret pairing id (the key is never included).
+ */
+export interface RemoteStatus {
+  state: 'offline' | 'connecting' | 'connected' | 'reconnecting' | string;
+  paired: boolean;
+  roomId: string | null;
+}
+
+/**
+ * One side of a phone-driven turn, pushed via the `remote://turn` event so a remote
+ * conversation renders LIVE in the desktop timeline (Phase 6). Emitted twice per turn
+ * — `role:"user"` when the prompt arrives, `role:"assistant"` when the answer is ready
+ * (same `id`). `conversationId` scopes it to the chat the phone is mirroring.
+ */
+export interface RemoteTurn {
+  conversationId: string;
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  toolsUsed: string[];
+  images: string[];
+}
+
 export const ipc = {
   // memory / conversation history
   listConversations: () => call<Conversation[]>('list_conversations'),
@@ -149,6 +186,8 @@ export const ipc = {
     call<StoredMessage[]>('list_messages', { conversationId }),
   appendMessage: (conversationId: string, role: string, content: string) =>
     call<string>('append_message', { msg: { conversation_id: conversationId, role, content } }),
+  /** Delete a conversation and all its messages (History sidebar trash action). */
+  deleteConversation: (id: string) => call<void>('delete_conversation', { id }),
 
   // mcp
   listMcpServers: () => call<McpServerDto[]>('list_mcp_servers'),
@@ -195,6 +234,32 @@ export const ipc = {
 
   // overlay
   summonOverlay: (origin: string) => call<void>('summon_overlay', { origin }),
+
+  // remote control (§Phase 3) — mint an ephemeral E2E AES key + room id; returns the
+  // `trenlens://pair` QR payload the desktop renders. Calling again rotates the key.
+  remoteStartPairing: () => call<PairingInfo>('remote_start_pairing'),
+
+  // remote control live connection (§Phase 4) — the headless Rust WebSocket client.
+  /** Open the relay socket for the armed pairing. `jwt` is the Supabase access
+   *  token (the relay verifies it at the upgrade); `relayUrl` overrides the local
+   *  dev default. Returns the initial status (`connecting`). */
+  remoteConnect: (jwt: string, relayUrl?: string) =>
+    call<RemoteStatus>('remote_connect', { jwt, relayUrl: relayUrl ?? null }),
+  /** Push a refreshed Supabase token; applied on the next reconnect. */
+  remoteUpdateToken: (jwt: string) => call<void>('remote_update_token', { jwt }),
+  /** Stop the client and DROP the E2E key (re-pair required to reconnect). */
+  remoteDisconnect: () => call<RemoteStatus>('remote_disconnect'),
+  /** Poll the current connection/pairing state. */
+  remoteStatus: () => call<RemoteStatus>('remote_status'),
+  /** Bind the active conversation as the shared session the phone mirrors (§Phase 6):
+   *  pushes its timeline to the phone so it backfills + adopts the id. `null` clears.
+   *  `provider`/`model` record the desktop's engine so phone turns run on it too. */
+  remoteSetConversation: (sessionId: string | null, provider?: string | null, model?: string | null) =>
+    call<void>('remote_set_conversation', {
+      sessionId,
+      provider: provider ?? null,
+      model: model ?? null,
+    }),
 
   /**
    * Open a URL in the user's default browser via the Tauri opener plugin

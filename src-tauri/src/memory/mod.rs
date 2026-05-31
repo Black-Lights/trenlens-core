@@ -222,6 +222,18 @@ impl MemoryHandle {
         Ok(())
     }
 
+    /// Delete a conversation and all of its messages. Messages have no FK cascade,
+    /// so they're removed first, then the conversation row. Idempotent (deleting a
+    /// missing id is a no-op).
+    pub fn delete_conversation(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![id])
+            .map_err(|e| format!("delete_conversation messages: {e}"))?;
+        conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])
+            .map_err(|e| format!("delete_conversation: {e}"))?;
+        Ok(())
+    }
+
     /// Every message in a conversation, oldest first, as `(id, role, content)`.
     pub fn list_messages(&self, conversation_id: &str) -> Result<Vec<(String, String, String)>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;

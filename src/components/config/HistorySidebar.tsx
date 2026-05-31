@@ -15,6 +15,7 @@ export function HistorySidebar({
   ready,
   onNewChat,
   onSelect,
+  onDelete,
   onClose,
 }: {
   conversations: Conversation[];
@@ -22,6 +23,8 @@ export function HistorySidebar({
   ready: boolean | null;
   onNewChat: () => void;
   onSelect: (id: string) => void;
+  /** Request deletion — the page shows a styled confirm popup before deleting. */
+  onDelete: (conversation: Conversation) => void;
   onClose: () => void;
 }) {
   return (
@@ -74,12 +77,12 @@ export function HistorySidebar({
             {conversations.map((c) => {
               const active = c.id === currentId;
               return (
-                <li key={c.id}>
+                <li key={c.id} className="group/item relative">
                   <button
                     type="button"
                     onClick={() => onSelect(c.id)}
                     title={c.title}
-                    className="group flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg border py-2 pl-2.5 pr-9 text-left transition-colors"
                     style={{
                       borderColor: active ? 'rgb(var(--c-pulse) / 0.5)' : 'transparent',
                       background: active ? 'rgb(var(--c-surface-raised) / 0.7)' : 'transparent',
@@ -89,9 +92,20 @@ export function HistorySidebar({
                       className="h-1.5 w-1.5 shrink-0 rounded-full"
                       style={{ background: active ? 'rgb(var(--c-pulse))' : 'rgb(var(--c-ink-faint))' }}
                     />
-                    <span className={`truncate text-[13px] ${active ? 'text-ink' : 'text-ink-muted group-hover:text-ink'}`}>
+                    <span className={`truncate text-[13px] ${active ? 'text-ink' : 'text-ink-muted group-hover/item:text-ink'}`}>
                       {c.title || 'Untitled'}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete "${c.title || 'Untitled'}"`}
+                    onClick={() => onDelete(c)}
+                    className="absolute right-1.5 top-1/2 hidden h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-ink-faint transition-colors hover:bg-red-500/10 hover:text-red-400 group-hover/item:grid"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m2 0v14a1 1 0 01-1 1H6a1 1 0 01-1-1V6" />
+                      <path d="M10 11v6M14 11v6" />
+                    </svg>
                   </button>
                 </li>
               );

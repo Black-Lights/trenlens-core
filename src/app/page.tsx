@@ -5,12 +5,13 @@ import { useState } from 'react';
 import { ConnectionBar, type Connection } from '@/components/chat/ConnectionBar';
 import { Composer } from '@/components/chat/Composer';
 import { AboutDialog } from '@/components/config/AboutDialog';
+import { ConfirmDialog } from '@/components/config/ConfirmDialog';
 import { HistorySidebar } from '@/components/config/HistorySidebar';
 import { ServerSidebar } from '@/components/config/ServerSidebar';
 import { HoverSummon } from '@/components/overlay/HoverSummon';
 import { AmbientField } from '@/components/timeline/AmbientField';
 import { Timeline } from '@/components/timeline/Timeline';
-import type { McpTool } from '@/lib/ipc';
+import type { Conversation, McpTool } from '@/lib/ipc';
 import { seedFor, useMcp } from '@/lib/useMcp';
 
 /**
@@ -26,6 +27,7 @@ export default function Page() {
   const [configOpen, setConfigOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
 
   const connections: Connection[] = mcp.servers.map((s) => ({
     id: s.id,
@@ -57,6 +59,7 @@ export default function Page() {
               ready={mcp.ready}
               onNewChat={() => void mcp.newChat()}
               onSelect={(id) => void mcp.loadConversation(id)}
+              onDelete={setDeleteTarget}
               onClose={() => setHistoryOpen(false)}
             />
           )}
@@ -99,6 +102,27 @@ export default function Page() {
       </div>
 
       <AnimatePresence>{aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}</AnimatePresence>
+
+      <AnimatePresence>
+        {deleteTarget && (
+          <ConfirmDialog
+            title="Delete chat"
+            message={
+              <>
+                Delete <span className="font-medium text-ink">“{deleteTarget.title || 'Untitled'}”</span> and all its
+                messages? This can&apos;t be undone.
+              </>
+            }
+            confirmLabel="Delete"
+            destructive
+            onConfirm={() => {
+              void mcp.deleteConversation(deleteTarget.id);
+              setDeleteTarget(null);
+            }}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <HoverSummon />
     </main>
