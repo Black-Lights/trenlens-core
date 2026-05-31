@@ -1,83 +1,51 @@
 'use client';
 
 /**
- * Phase 3 pairing screen.
+ * Pairing screen.
  *
- * Scan the desktop QR (or paste the `trenlens://pair` link), import the AES-256
- * key with Web Crypto, and run a self-test that seals + opens an `{iv, ct}` frame
- * to prove the key works end-to-end. Phase 5 takes this paired key and opens the
- * live relay WebSocket; here we stop at "paired + crypto verified".
+ * Scan the desktop QR (or paste the `trenlens://pair` link), import the AES-256 key
+ * with Web Crypto, run a self-test that seals + opens an `{iv, ct}` frame to prove the
+ * key works, then arm the in-memory session and go to the chat. The key is held ONLY
+ * in memory (never persisted), so a hard reload returns here to re-scan.
  */
 
-import Link from 'next/link';
 import { useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { QrScanner } from '@/components/QrScanner';
 import { importKey, openMessage, sealMessage } from '@/lib/crypto';
-import { parsePairUri, type PairingPayload } from '@/lib/pairing';
-
-interface Paired {
-  payload: PairingPayload;
-  fingerprint: string;
-  selfTest: 'ok' | 'mismatch';
-}
+import { parsePairUri } from '@/lib/pairing';
+import { setRemoteSession } from '@/lib/session';
 
 export default function ScanPage() {
-  const [paired, setPaired] = useState<Paired | null>(null);
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [manual, setManual] = useState('');
   const [cameraFailed, setCameraFailed] = useState(false);
+  const [pairing, setPairing] = useState(false);
   const processing = useRef(false);
 
   async function handle(text: string) {
-    if (processing.current || paired) return;
+    if (processing.current) return;
     processing.current = true;
     setError(null);
+    setPairing(true);
     try {
       const payload = parsePairUri(text);
       const key = await importKey(payload.keyB64Url);
-      // Self-test: a round-trip through the real {iv, ct} codec proves the key.
+      // Self-test: a real {iv, ct} round-trip proves the key before we commit to it.
       const sample = { v: 1, type: 'ping', t: Date.now() };
-      const frame = await sealMessage(key, sample);
-      const back = await openMessage<typeof sample>(key, frame);
-      setPaired({
-        payload,
-        fingerprint: payload.keyB64Url.slice(0, 8),
-        selfTest: back.t === sample.t ? 'ok' : 'mismatch',
-      });
+      const back = await openMessage<typeof sample>(key, await sealMessage(key, sample));
+      if (back.t !== sample.t) throw new Error('Crypto self-test failed — the key did not round-trip.');
+
+      setRemoteSession({ room: payload.room, key, keyB64Url: payload.keyB64Url });
+      router.push('/chat');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       processing.current = false; // allow a retry
+      setPairing(false);
     }
-  }
-
-  if (paired) {
-    return (
-      <main>
-        <div className="card">
-          <h1>Paired ✓</h1>
-          <p className="sub">End-to-end key established with your desktop.</p>
-          <div className="claims">
-            <div>
-              <b>room:</b> {paired.payload.room}
-            </div>
-            <div>
-              <b>key:</b> {paired.fingerprint}… (32 bytes, in-memory only)
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <b>crypto self-test:</b>{' '}
-              {paired.selfTest === 'ok' ? '✓ {iv,ct} round-trip OK' : '✗ mismatch'}
-            </div>
-          </div>
-          <p className="sub" style={{ marginTop: 14 }}>
-            Next (Phase 5): open the encrypted relay connection and start chatting.
-          </p>
-          <Link href="/">
-            <button className="secondary">Back</button>
-          </Link>
-        </div>
-      </main>
-    );
   }
 
   return (
@@ -88,15 +56,17 @@ export default function ScanPage() {
 
         {!cameraFailed && <QrScanner onResult={handle} onError={() => setCameraFailed(true)} />}
 
-        <label htmlFor="manual">{cameraFailed ? 'Camera unavailable — paste the link' : 'Or paste the link'}</label>
+        <label htmlFor="manual">
+          {cameraFailed ? 'Camera unavailable — paste the link' : 'Or paste the link'}
+        </label>
         <input
           id="manual"
           placeholder="trenlens://pair?room=…&key=…"
           value={manual}
           onChange={(e) => setManual(e.target.value)}
         />
-        <button onClick={() => void handle(manual)} disabled={!manual.trim()}>
-          Pair
+        <button onClick={() => void handle(manual)} disabled={pairing || !manual.trim()}>
+          {pairing ? 'Pairing…' : 'Pair'}
         </button>
         {error && <p className="error">{error}</p>}
 

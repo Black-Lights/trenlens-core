@@ -22,6 +22,7 @@ import {
   type JwtClaims,
 } from '@/lib/auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { getRemoteSession } from '@/lib/session';
 
 export default function Home() {
   const [configured, setConfigured] = useState(true);
@@ -30,9 +31,11 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
     setConfigured(isSupabaseConfigured());
+    setHasSession(!!getRemoteSession());
     if (isSupabaseConfigured()) {
       getSession().then(setSession).catch(() => setSession(null));
     }
@@ -98,8 +101,13 @@ export default function Home() {
               <b>token:</b> {token.slice(0, 24)}…{token.slice(-12)}
             </div>
           </div>
+          {hasSession && (
+            <Link href="/chat">
+              <button>Open chat →</button>
+            </Link>
+          )}
           <Link href="/scan">
-            <button>Pair a desktop →</button>
+            <button>{hasSession ? 'Pair a different desktop →' : 'Pair a desktop →'}</button>
           </Link>
           <button className="secondary" onClick={handleSignOut} disabled={busy}>
             Sign out
