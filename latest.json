@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0-alpha.3",
-  "notes": "Tool screenshots now display inline in chat; vision parity for Kimi & DeepSeek (tool-produced images are fed back to the model). See the GitHub release for details.",
-  "pub_date": "2026-05-31T02:10:29Z",
+  "version": "0.1.0-alpha.4",
+  "notes": "Remote Control: drive your desktop from your phone over a zero-knowledge Cloudflare blind relay (E2E AES-256-GCM, QR/link pairing) with live two-way chat sync. Plus desktop chat deletion with a styled confirm dialog, camera-optional mobile pairing, and per-engine remote turns. See the GitHub release for details.",
+  "pub_date": "2026-05-31T16:59:32Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSlZyNmI4MUtyR2UxdGlUa3lLZjVXVDFqMldPdTJEckc5RGJ6K1FPMWpZQnVRSXM0WHFIam1FZjQxQ3lsaW1VaUY5N2tmanpEeFdzS01hNUdOWEtTMGJYV3R4L09peUFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwMTkzMzUzCWZpbGU6VHJlbkxlbnMgQ29yZV8wLjEuMC1hbHBoYS4zX3g2NC1zZXR1cC5leGUKVWRKQW5sZlh6TEd3WVZFK1o5UnArOWtnSnNnZjlXWDlWTVdZWXV5MGlsSms5a3VsdEhzTnJNSC80NVNLN01COUlGZisrYXJQN3FZcHJ6QjYvdTF0Q1E9PQo=",
-      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.3/TrenLens-Core_0.1.0-alpha.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSlZyNmI4MUtyR1dBbVdWbkNISmRDRy9RbTBXd3gwTUhWWGVwZ1JsQXBZalZEdGxpZDNOaVUzaDVTQWQrcWRLbVVtOE5rOVZjNldvaWQrb2lLOHVvaVJDZHNmVncySndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwMjQ2NzcyCWZpbGU6VHJlbkxlbnMgQ29yZV8wLjEuMC1hbHBoYS40X3g2NC1zZXR1cC5leGUKZW5nSGRLdlpZTml5alU0TTh0RkhpRGxQTXZiektlYm85NXlSaWU2NCtBUmd4RjhZT1lsZFBKdzFVb3dUd05VMExwTGRLNTg2bUNuVzhIeWFlakF6RHc9PQo=",
+      "url": "https://github.com/Black-Lights/trenlens-core/releases/download/v0.1.0-alpha.4/TrenLens-Core_0.1.0-alpha.4_x64-setup.exe"
     }
   }
 }
