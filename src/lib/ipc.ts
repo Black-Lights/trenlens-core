@@ -186,6 +186,8 @@ export const ipc = {
     call<StoredMessage[]>('list_messages', { conversationId }),
   appendMessage: (conversationId: string, role: string, content: string) =>
     call<string>('append_message', { msg: { conversation_id: conversationId, role, content } }),
+  /** Delete a conversation and all its messages (History sidebar trash action). */
+  deleteConversation: (id: string) => call<void>('delete_conversation', { id }),
 
   // mcp
   listMcpServers: () => call<McpServerDto[]>('list_mcp_servers'),

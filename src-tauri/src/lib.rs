@@ -80,6 +80,7 @@ pub fn run() {
             commands::list_conversations,
             commands::create_conversation,
             commands::append_message,
+            commands::delete_conversation,
             commands::list_messages,
             commands::execute_sql,
             commands::query_sql,

@@ -332,6 +332,28 @@ export function useMcp() {
     }
   }, [entries.length, ready]);
 
+  // Delete a session (History sidebar trash). Removes it from the DB + list; if it
+  // was the open chat, clear the timeline back to the empty state (a new turn or
+  // "+ New chat" starts a fresh session). The conversation-binding effect re-syncs
+  // a paired phone when the active id changes.
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      if (running.current || ready === false) return;
+      try {
+        await ipc.deleteConversation(id);
+        setConversations((cs) => cs.filter((c) => c.id !== id));
+        if (convIdRef.current === id) {
+          setEntries([]);
+          convIdRef.current = null;
+          setCurrentConversationId(null);
+        }
+      } catch (e) {
+        setNotice(errMsg(e));
+      }
+    },
+    [ready],
+  );
+
   // Reopen an old session: pull its messages and replay them onto the timeline.
   const loadConversation = useCallback(
     async (id: string) => {
@@ -831,6 +853,7 @@ export function useMcp() {
     refresh,
     newChat,
     loadConversation,
+    deleteConversation,
     setActiveProvider,
     setActiveModel,
   };

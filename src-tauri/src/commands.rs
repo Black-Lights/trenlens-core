@@ -87,6 +87,15 @@ pub async fn append_message(
     db.append_message(&msg.conversation_id, &msg.role, &msg.content)
 }
 
+/// Delete a conversation and its messages (the History sidebar's trash action).
+#[tauri::command]
+pub async fn delete_conversation(
+    id: String,
+    db: tauri::State<'_, MemoryHandle>,
+) -> Result<(), String> {
+    db.delete_conversation(&id)
+}
+
 /// Reopen a session: every stored turn, oldest first, for the timeline to replay.
 #[tauri::command]
 pub async fn list_messages(
